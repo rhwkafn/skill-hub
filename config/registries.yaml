@@ -13,6 +13,11 @@ registries:
     repo: "Yuan1z0825/nature-skills"
     skill_glob: "*/SKILL.md"
 
+  - name: codex-skills-workbench-github
+    type: github
+    repo: "Jinze-Lee/codex-skills-workbench"
+    skill_glob: "skills/*/SKILL.md"
+
   - name: scientific-agent-skills
     type: github
     repo: "K-Dense-AI/scientific-agent-skills"

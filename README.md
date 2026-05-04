@@ -63,6 +63,7 @@ This registry aggregates skills from multiple open-source repositories:
 | Source | Type | Description | Skills |
 |--------|------|-------------|--------|
 | [codex-skills-workbench](D:/AI-agent/claude-app/codex-reaserch/codex-skills-workbench) | Local | Research workflow skills (ecology, plotting, data pipelines) | 16 |
+| [codex-skills-workbench](https://github.com/Jinze-Lee/codex-skills-workbench) | GitHub | Open-source version of the above, same structure | 16 |
 | [nature-skills](https://github.com/Yuan1z0825/nature-skills) | GitHub | Nature journal academic writing and scientific figure skills | 4+ |
 | [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | GitHub | Comprehensive scientific research agent skills | 100+ |
 
