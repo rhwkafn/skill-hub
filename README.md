@@ -65,7 +65,8 @@ This registry aggregates skills from multiple open-source repositories:
 | [codex-skills-workbench](D:/AI-agent/claude-app/codex-reaserch/codex-skills-workbench) | Local | Research workflow skills (ecology, plotting, data pipelines) | 16 |
 | [codex-skills-workbench](https://github.com/Jinze-Lee/codex-skills-workbench) | GitHub | Open-source version of the above, same structure | 16 |
 | [nature-skills](https://github.com/Yuan1z0825/nature-skills) | GitHub | Nature journal academic writing and scientific figure skills | 4+ |
-| [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | GitHub | Comprehensive scientific research agent skills | 100+ |
+| [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | GitHub | Comprehensive scientific research agent skills | 136 |
+| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | GitHub | Production engineering skills (testing, CI/CD, security, code review) | 21 |
 
 ### codex-skills-workbench (Local)
 
@@ -99,6 +100,20 @@ A massive collection covering research, engineering, and analysis:
 - `scientific-writing`, `scientific-visualization` — Publishing
 - `literature-review`, `paper-lookup` — Literature
 - ... and 80+ more
+
+### addyosmani/agent-skills (GitHub)
+
+Production-grade engineering skills by Addy Osmani:
+
+- `code-review-and-quality` — Code review, linting, quality gates
+- `test-driven-development` — TDD workflow and test strategy
+- `ci-cd-and-automation` — CI/CD pipeline design and automation
+- `security-and-hardening` — Security auditing and hardening
+- `performance-optimization` — Profiling and optimization patterns
+- `api-and-interface-design` — API design and contract-driven development
+- `debugging-and-error-recovery` — Systematic debugging methodology
+- `frontend-ui-engineering` — UI component architecture and patterns
+- ... and 13 more
 
 ## Architecture
 

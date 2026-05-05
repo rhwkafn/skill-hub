@@ -18,6 +18,11 @@ registries:
     repo: "Jinze-Lee/codex-skills-workbench"
     skill_glob: "skills/*/SKILL.md"
 
+  - name: addyosmani-agent-skills
+    type: github
+    repo: "addyosmani/agent-skills"
+    skill_glob: "skills/*/SKILL.md"
+
   - name: scientific-agent-skills
     type: github
     repo: "K-Dense-AI/scientific-agent-skills"
