@@ -75,6 +75,9 @@ class SkillIndex:
             entry.setdefault("has_hooks", False)
             entry.setdefault("triggers", [])
             entry.setdefault("decision_card", "")
+            entry.setdefault("output_formats", [])
+            entry.setdefault("input_types", [])
+            entry.setdefault("domain", "")
             # Convert mode string to enum
             from ..models import SkillMode
             entry["mode"] = SkillMode(entry["mode"])

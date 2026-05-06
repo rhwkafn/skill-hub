@@ -31,6 +31,10 @@ class SkillMeta:
     has_hooks: bool = False  # whether the skill defines PreToolUse/PostToolUse hooks
     triggers: list[str] = field(default_factory=list)  # activation phrases
     decision_card: str = ""  # compact structured summary for the selector (~50 tokens)
+    # Functional constraints — what the skill produces and consumes
+    output_formats: list[str] = field(default_factory=list)  # e.g. ["pptx", "html", "pdf"]
+    input_types: list[str] = field(default_factory=list)     # e.g. ["paper", "data", "code"]
+    domain: str = ""                                          # e.g. "science", "engineering", "writing"
 
     def to_index_entry(self) -> dict:
         """Minimal dict for the searchable index."""
@@ -48,6 +52,9 @@ class SkillMeta:
             "has_hooks": self.has_hooks,
             "triggers": self.triggers,
             "decision_card": self.decision_card,
+            "output_formats": self.output_formats,
+            "input_types": self.input_types,
+            "domain": self.domain,
         }
 
     def build_decision_card(self, content_head: str = "") -> str:
@@ -78,6 +85,12 @@ class SkillMeta:
         what = self._extract_what(content_head)
         if what:
             parts.append(f"What: {what}")
+
+        # Capabilities: output formats, domain
+        if self.output_formats:
+            parts.append(f"Output: {','.join(self.output_formats)}")
+        if self.domain:
+            parts.append(f"Domain: {self.domain}")
 
         self.decision_card = "\n".join(parts)
         return self.decision_card

@@ -79,6 +79,9 @@ class GitHubSource(SkillSource):
                 skill.tools_required = meta["tools_required"]
                 skill.has_hooks = meta["has_hooks"]
                 skill.triggers = meta["triggers"]
+                skill.output_formats = meta["output_formats"]
+                skill.input_types = meta["input_types"]
+                skill.domain = meta["domain"]
 
                 # Build decision card from the content we already have
                 skill.build_decision_card(content)
@@ -259,6 +262,9 @@ def _parse_skill_md(content: str) -> dict:
     elif any(t in description.lower() for t in ["combin", "alongside", "compose"]):
         mode = SkillMode.COMPOSE
 
+    # Extract capabilities from content
+    output_formats, input_types, domain = _extract_capabilities(content, description)
+
     return {
         "description": description,
         "use_when": use_when,
@@ -268,4 +274,69 @@ def _parse_skill_md(content: str) -> dict:
         "tools_required": tools_required,
         "has_hooks": has_hooks,
         "triggers": triggers,
+        "output_formats": output_formats,
+        "input_types": input_types,
+        "domain": domain,
     }
+
+
+def _extract_capabilities(content: str, description: str) -> tuple[list[str], list[str], str]:
+    """Extract output formats, input types, and domain from skill content.
+
+    Uses keyword detection — no ML, no API, just pattern matching.
+    """
+    text = (content + " " + description).lower()
+
+    # Output formats
+    format_patterns = {
+        "pptx": [".pptx", "powerpoint", "ppt", "slides", "presentation", "beamer"],
+        "html": [".html", "html page", "web page", "webpage", "landing page"],
+        "pdf": [".pdf", "pdf report", "generate pdf", "create pdf", "latex pdf"],
+        "docx": [".docx", "word document", "docx file"],
+        "csv": [".csv", "csv file", "export csv"],
+        "xlsx": [".xlsx", ".xls", "excel", "spreadsheet"],
+        "png": [".png", ".jpg", ".svg", "image", "figure", "plot", "chart", "diagram"],
+        "md": [".md", "markdown", "readme", "documentation"],
+        "json": [".json", "json output", "json file"],
+        "api": ["rest api", "graphql", "endpoint", "openapi", "swagger"],
+        "cli": ["cli tool", "command line", "argparse", "click"],
+    }
+
+    output_formats = []
+    for fmt, patterns in format_patterns.items():
+        if any(p in text for p in patterns):
+            output_formats.append(fmt)
+
+    # Input types
+    input_patterns = {
+        "paper": ["paper", "manuscript", "journal", "publication", "research paper"],
+        "data": ["dataset", "dataframe", "csv", "data file", "tabular"],
+        "code": ["codebase", "source code", "repository", "code review"],
+        "image": ["image", "photo", "screenshot", "figure"],
+        "sequence": ["sequence", "protein", "dna", "rna", "amino acid", "genome"],
+        "molecule": ["molecule", "compound", "smiles", "chemical", "drug"],
+    }
+
+    input_types = []
+    for itype, patterns in input_patterns.items():
+        if any(p in text for p in patterns):
+            input_types.append(itype)
+
+    # Domain
+    domain = ""
+    domain_patterns = {
+        "science": ["research", "scientific", "journal", "paper", "publication", "hypothesis", "experiment"],
+        "biology": ["rna", "dna", "protein", "cell", "gene", "genomic", "phylogen", "molecular"],
+        "chemistry": ["molecule", "compound", "chemical", "drug", "smiles", "docking"],
+        "data-science": ["machine learning", "neural", "model training", "dataset", "pandas", "sklearn"],
+        "engineering": ["deploy", "ci/cd", "testing", "refactor", "code review", "api"],
+        "writing": ["writing", "manuscript", "polish", "abstract", "bibliography", "citation"],
+    }
+
+    for dom, patterns in domain_patterns.items():
+        hits = sum(1 for p in patterns if p in text)
+        if hits >= 2:
+            domain = dom
+            break
+
+    return output_formats, input_types, domain

@@ -143,50 +143,59 @@ def create_server(
         return f"Skill '{name}' exists but content not cached. Run sync first."
 
     @mcp.tool()
-    def suggest_skills(task_description: str) -> str:
+    def suggest_skills(
+        task_description: str,
+        output_format: str = "",
+        domain: str = "",
+    ) -> str:
         """Find the right skills for a complex task.
 
         Three-stage pipeline:
         1. Router (TF-IDF) recalls ~20 candidates
-        2. Selector (precise LLM) picks the best ones from decision cards
-        3. Returns selected skill names for you to load
-
-        The selector runs in an isolated context — no pollution of your workbench.
+        2. Optional: filter by output format or domain
+        3. Returns candidates for you to choose from
 
         Args:
             task_description: FULL task context. Don't compress. Include all requirements.
-                Examples:
-                - "重构认证模块，兼容旧接口，跑通测试，安全部署"
-                - "build a React component with tests, review code quality, deploy safely"
+            output_format: Filter by output format (e.g. "pptx", "html", "pdf", "csv").
+                Use this when the workflow requires a specific output type.
+            domain: Filter by domain (e.g. "science", "biology", "engineering", "writing").
 
         Returns:
-            If selector is enabled: JSON with selected skill names.
-            If selector is disabled: structured candidate list for you to choose from.
+            Structured candidate list with names, descriptions, paths, and capabilities.
         """
         # Stage 1: Router recall
-        route_output = router.route(task_description, all_skills, top_k=20)
+        route_output = router.route(task_description, all_skills, top_k=30)
 
         if not route_output.candidates:
             return "No matching skills found for this task."
 
         candidates = [r.skill for r in route_output.candidates]
 
-        # Stage 2: Selector decision (isolated context)
-        if selector:
-            result = selector.select(task_description, candidates)
+        # Stage 2: Filter by capabilities if specified
+        if output_format:
+            fmt = output_format.lower().strip(".")
+            filtered = [s for s in candidates if fmt in s.output_formats]
+            if filtered:
+                candidates = filtered
 
-            if result.selected:
-                return json.dumps({
-                    "selected": result.selected,
-                    "selector_model": selector.model,
-                    "candidates_shown": result.shown,
-                    "next_step": "Call load_skill(name) for each selected skill to get full instructions.",
-                }, indent=2, ensure_ascii=False)
+        if domain:
+            dom = domain.lower()
+            filtered = [s for s in candidates if s.domain == dom]
+            if filtered:
+                candidates = filtered
 
-            # Selector returned nothing — fall through to return all candidates
+        # Rebuild route output with (possibly filtered) candidates
+        candidate_set = set(id(s) for s in candidates)
+        from ..router.base import RouteOutput, RouteResult
+        filtered_output = RouteOutput(
+            candidates=[RouteResult(skill=r.skill, score=r.score, reason=r.reason)
+                       for r in route_output.candidates if id(r.skill) in candidate_set],
+            global_skills=[RouteResult(skill=r.skill, score=r.score, reason=r.reason)
+                          for r in route_output.global_skills if id(r.skill) in candidate_set],
+        )
 
-        # Fallback: return all candidates for the main model to decide
-        return route_output.to_prompt()
+        return filtered_output.to_prompt()
 
     @mcp.tool()
     def list_skill_categories() -> str:
