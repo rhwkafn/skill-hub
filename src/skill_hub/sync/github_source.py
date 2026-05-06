@@ -70,7 +70,15 @@ class GitHubSource(SkillSource):
         for skill in skills:
             try:
                 content = await self.fetch_skill(skill)
-                skill.description, skill.use_when, skill.tags, skill.category = _parse_skill_md(content)
+                meta = _parse_skill_md(content)
+                skill.description = meta["description"]
+                skill.use_when = meta["use_when"]
+                skill.tags = meta["tags"]
+                skill.category = meta["category"]
+                skill.mode = meta["mode"]
+                skill.tools_required = meta["tools_required"]
+                skill.has_hooks = meta["has_hooks"]
+                skill.triggers = meta["triggers"]
 
                 # Save to local cache
                 cache_path = self._local_cache_path(skill.repo_path)
@@ -107,27 +115,130 @@ class GitHubSource(SkillSource):
         await self._client.aclose()
 
 
-def _parse_skill_md(content: str) -> tuple[str, str, list[str], str]:
-    """Extract metadata from a SKILL.md file's frontmatter and content."""
+def _parse_skill_md(content: str) -> dict:
+    """Extract metadata from a SKILL.md file's frontmatter and content.
+
+    Returns a dict with keys: description, use_when, tags, category,
+    mode, tools_required, has_hooks, triggers.
+    """
+    from ..models import SkillMode
+
     description = ""
     use_when = ""
     tags = []
     category = ""
+    triggers = []
+    tools_required = []
+    has_hooks = False
+    mode = SkillMode.ON_DEMAND
 
     # Parse YAML frontmatter
     fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
     if fm_match:
         fm = fm_match.group(1)
-        for line in fm.split("\n"):
-            if line.startswith("description:"):
-                description = line.split(":", 1)[1].strip().strip("'\"")
-            elif line.startswith("name:"):
-                pass
-            elif line.startswith("tags:"):
-                tag_str = line.split(":", 1)[1].strip()
-                tags = [t.strip().strip("- ") for t in tag_str.split(",")]
+        lines = fm.split("\n")
 
-    # Look for "Use when" or "useWhen" patterns
+        current_key = None
+        current_list = []
+        block_scalar = False
+        block_indent = 0
+
+        for line in lines:
+            # Handle block scalar continuation (| or >)
+            if block_scalar:
+                if not line.strip():
+                    current_list.append("")
+                    continue
+                indent = len(line) - len(line.lstrip())
+                if block_indent is None:
+                    block_indent = indent
+                if indent >= block_indent:
+                    current_list.append(line.strip())
+                    continue
+                else:
+                    # Block scalar ended
+                    block_scalar = False
+                    if current_key == "description":
+                        description = " ".join(v for v in current_list if v).strip()
+                    current_key = None
+                    current_list = []
+
+            stripped = line.strip()
+
+            # Top-level key: value lines
+            key_match = re.match(r"^(\w[\w-]*):\s*(.*)", stripped)
+            if key_match:
+                key = key_match.group(1)
+                value = key_match.group(2).strip()
+
+                # Flush previous list field
+                if current_key and current_list:
+                    if current_key == "triggers":
+                        triggers = current_list
+                    elif current_key == "allowed-tools":
+                        tools_required = current_list
+                    elif current_key == "tags":
+                        tags = current_list
+                    current_list = []
+                    current_key = None
+
+                if key == "description":
+                    if value in ("|", ">"):
+                        # Block scalar — collect continuation lines
+                        block_scalar = True
+                        block_indent = None  # will be set on first content line
+                        current_key = "description"
+                        current_list = []
+                    elif value:
+                        description = value.strip("'\"")
+                elif key == "triggers":
+                    if not value:
+                        current_key = "triggers"
+                        current_list = []
+                    else:
+                        triggers = [v.strip() for v in value.split(",")]
+                elif key == "allowed-tools":
+                    if not value:
+                        current_key = "allowed-tools"
+                        current_list = []
+                    else:
+                        tools_required = [v.strip() for v in value.split(",")]
+                elif key == "tags":
+                    if not value:
+                        current_key = "tags"
+                        current_list = []
+                    else:
+                        tags = [v.strip().strip("- ") for v in value.split(",")]
+                elif key == "hooks":
+                    has_hooks = True
+                # name, version — skip
+                continue
+
+            # List continuation: "  - item"
+            if current_key and stripped.startswith("- "):
+                item = stripped[2:].strip().strip("'\"")
+                if block_scalar and block_indent is None:
+                    block_indent = len(line) - len(line.lstrip()) - 2
+                current_list.append(item)
+                continue
+
+            # Block scalar first content line (to determine indent)
+            if block_scalar and block_indent is None and stripped:
+                block_indent = len(line) - len(line.lstrip())
+                current_list.append(stripped)
+                continue
+
+        # Flush remaining
+        if block_scalar and current_key == "description":
+            description = " ".join(v for v in current_list if v).strip()
+        if current_key == "triggers":
+            triggers = current_list
+        elif current_key == "allowed-tools":
+            tools_required = current_list
+        elif current_key == "tags":
+            tags = current_list
+
+    # Look for "Use when" or "useWhen" patterns in body
     uw_match = re.search(r"(?:use[_\s]when|when to use):\s*(.+?)(?:\n|$)", content, re.IGNORECASE)
     if uw_match:
         use_when = uw_match.group(1).strip()
@@ -139,4 +250,19 @@ def _parse_skill_md(content: str) -> tuple[str, str, list[str], str]:
         first_para = body.split("\n\n")[0] if body else ""
         description = first_para[:200]
 
-    return description, use_when, tags, category
+    # Infer mode from metadata
+    if has_hooks or "hooks" in content.lower() and "PreToolUse" in content:
+        mode = SkillMode.GLOBAL
+    elif any(t in description.lower() for t in ["combin", "alongside", "compose"]):
+        mode = SkillMode.COMPOSE
+
+    return {
+        "description": description,
+        "use_when": use_when,
+        "tags": tags,
+        "category": category,
+        "mode": mode,
+        "tools_required": tools_required,
+        "has_hooks": has_hooks,
+        "triggers": triggers,
+    }

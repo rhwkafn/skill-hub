@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from enum import Enum
+
+
+class SkillMode(Enum):
+    """How a skill should be applied to an agent session."""
+    GLOBAL = "global"       # Always active (e.g. guard, careful) — hooks + tool restrictions
+    ON_DEMAND = "on_demand" # Load once when needed (e.g. tdd, diagnose) — inject as instructions
+    COMPOSE = "compose"     # Can combine with other skills (e.g. code-review + security)
 
 
 @dataclass
@@ -18,6 +25,11 @@ class SkillMeta:
     source_url: str = ""  # remote URL or local path
     local_path: str | None = None  # if synced locally
     repo_path: str = ""  # relative path within the repo (e.g. "skills/tdd/SKILL.md")
+    # Application model
+    mode: SkillMode = SkillMode.ON_DEMAND
+    tools_required: list[str] = field(default_factory=list)  # e.g. ["Bash", "Read"]
+    has_hooks: bool = False  # whether the skill defines PreToolUse/PostToolUse hooks
+    triggers: list[str] = field(default_factory=list)  # activation phrases
 
     def to_index_entry(self) -> dict:
         """Minimal dict for the searchable index."""
@@ -30,23 +42,61 @@ class SkillMeta:
             "use_when": self.use_when,
             "source_url": self.source_url,
             "repo_path": self.repo_path,
+            "mode": self.mode.value,
+            "tools_required": self.tools_required,
+            "has_hooks": self.has_hooks,
+            "triggers": self.triggers,
         }
 
     def matches(self, query: str) -> float:
         """Simple relevance score against a query string. Returns 0.0-1.0."""
         q = query.lower()
         fields = [
-            (self.name, 0.4),
-            (self.description, 0.3),
-            (self.use_when, 0.2),
+            (self.name, 0.3),
+            (self.description, 0.25),
+            (self.use_when, 0.15),
             (" ".join(self.tags), 0.1),
+            (" ".join(self.triggers), 0.2),
         ]
         score = 0.0
         for text, weight in fields:
             if q in text.lower():
                 score += weight
-            # partial word match
             for word in q.split():
                 if word and word in text.lower():
                     score += weight * 0.3
         return min(score, 1.0)
+
+    def apply_hint(self) -> dict:
+        """Structured hint for how an agent should apply this skill."""
+        if self.mode == SkillMode.GLOBAL:
+            return {
+                "mode": "global",
+                "instruction": (
+                    f"Activate '{self.name}' as a session-wide rule. "
+                    f"This skill modifies agent behavior through hooks and tool restrictions. "
+                    f"Inject its instructions into the system prompt for the entire session."
+                ),
+                "tools_required": self.tools_required,
+                "has_hooks": self.has_hooks,
+            }
+        elif self.mode == SkillMode.COMPOSE:
+            return {
+                "mode": "compose",
+                "instruction": (
+                    f"Load '{self.name}' as reference material. "
+                    f"It can be combined with other skills. "
+                    f"Inject its content into context alongside any co-active skills."
+                ),
+                "tools_required": self.tools_required,
+            }
+        else:
+            return {
+                "mode": "on_demand",
+                "instruction": (
+                    f"Load '{self.name}' for this specific task only. "
+                    f"Follow its workflow step by step. "
+                    f"Inject its content into the system prompt for this task."
+                ),
+                "tools_required": self.tools_required,
+            }

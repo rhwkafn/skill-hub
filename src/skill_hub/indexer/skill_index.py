@@ -70,6 +70,13 @@ class SkillIndex:
             # Handle missing fields for backwards compatibility
             entry.setdefault("source_url", "")
             entry.setdefault("repo_path", "")
+            entry.setdefault("mode", "on_demand")
+            entry.setdefault("tools_required", [])
+            entry.setdefault("has_hooks", False)
+            entry.setdefault("triggers", [])
+            # Convert mode string to enum
+            from ..models import SkillMode
+            entry["mode"] = SkillMode(entry["mode"])
             idx.add(SkillMeta(**entry))
         return idx
 

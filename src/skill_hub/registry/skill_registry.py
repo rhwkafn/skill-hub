@@ -38,6 +38,10 @@ class SkillRegistry:
                 "description": skill.description[:150],
                 "category": skill.category,
                 "tags": skill.tags,
+                "mode": skill.mode.value,
+                "tools_required": skill.tools_required,
+                "has_hooks": skill.has_hooks,
+                "triggers": skill.triggers,
             }
             for skill, score in results
         ]
