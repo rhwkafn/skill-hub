@@ -35,13 +35,14 @@ class SkillRegistry:
                 "registry": skill.registry,
                 "score": round(score, 3),
                 "use_when": skill.use_when,
-                "description": skill.description[:150],
+                "description": skill.description,
                 "category": skill.category,
                 "tags": skill.tags,
                 "mode": skill.mode.value,
                 "tools_required": skill.tools_required,
                 "has_hooks": skill.has_hooks,
                 "triggers": skill.triggers,
+                "repo_path": skill.repo_path,
             }
             for skill, score in results
         ]

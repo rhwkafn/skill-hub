@@ -146,8 +146,9 @@ def run_eval():
                 "name": r.skill.name,
                 "score": round(r.score, 3),
                 "mode": r.skill.mode.value,
-                "description": r.skill.description[:80],
-                "triggers": r.skill.triggers[:2],
+                "description": r.skill.description,
+                "triggers": r.skill.triggers,
+                "repo_path": r.skill.repo_path,
             })
 
         entry = {

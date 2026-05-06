@@ -28,6 +28,17 @@ class RouteOutput:
     categorized: dict[str, list[RouteResult]] = field(default_factory=dict)  # by category
     catalog_text: str = ""                 # compact catalog of candidates for the main model
 
+    def _format_skill(self, r: RouteResult, show_score: bool = False) -> str:
+        """Format a single skill entry for the prompt."""
+        s = r.skill
+        hooks_tag = " [has hooks]" if s.has_hooks else ""
+        score_tag = f" (score={r.score:.2f})" if show_score else ""
+        path_tag = f" `{s.repo_path}`" if s.repo_path else ""
+        line = f"- **{s.name}**{hooks_tag}{score_tag}{path_tag}: {s.description}"
+        if s.triggers:
+            line += f"\n  Triggers: {', '.join(s.triggers[:3])}"
+        return line
+
     def to_prompt(self) -> str:
         """Generate a structured prompt section for the main model.
 
@@ -40,20 +51,16 @@ class RouteOutput:
         if self.global_skills:
             lines.append("### Global Skills (activate for entire session)")
             for r in self.global_skills:
-                hooks_tag = " [has hooks]" if r.skill.has_hooks else ""
-                lines.append(f"- **{r.skill.name}**{hooks_tag}: {r.skill.description[:100]}")
-                if r.skill.triggers:
-                    lines.append(f"  Triggers: {', '.join(r.skill.triggers[:3])}")
+                lines.append(self._format_skill(r))
             lines.append("")
 
-        # Group remaining by mode
         on_demand = [r for r in self.candidates if r.skill.mode.value == "on_demand"]
         compose = [r for r in self.candidates if r.skill.mode.value == "compose"]
 
         if on_demand:
             lines.append("### Task Skills (load as needed)")
             for r in on_demand[:10]:
-                lines.append(f"- **{r.skill.name}** (score={r.score:.2f}): {r.skill.description[:100]}")
+                lines.append(self._format_skill(r, show_score=True))
                 if r.skill.triggers:
                     lines.append(f"  Triggers: {', '.join(r.skill.triggers[:3])}")
             lines.append("")
@@ -61,7 +68,7 @@ class RouteOutput:
         if compose:
             lines.append("### Composable Skills (combine with others)")
             for r in compose[:5]:
-                lines.append(f"- **{r.skill.name}** (score={r.score:.2f}): {r.skill.description[:100]}")
+                lines.append(self._format_skill(r, show_score=True))
             lines.append("")
 
         lines.append("To use a skill, call `load_skill(name)` to get full instructions.")
