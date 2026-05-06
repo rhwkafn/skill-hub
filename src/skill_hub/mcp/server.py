@@ -211,6 +211,7 @@ def create_server(
             "tools_required": skill.tools_required,
             "has_hooks": skill.has_hooks,
             "source_url": skill.source_url,
+            "repo_path": skill.repo_path,
             "has_local_content": skill.local_path is not None,
             "decision_card": skill.decision_card,
             "apply_hint": skill.apply_hint(),
