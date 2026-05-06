@@ -79,7 +79,7 @@ def create_server(
     all_skills = list(index.skills.values())
 
     if router is None:
-        router = TFIDFRouter()
+        router = TFIDFRouter()  # default: local semantic matching, no API needed
 
     selector_status = "enabled" if selector else "disabled (returning all candidates)"
 
