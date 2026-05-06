@@ -26,8 +26,9 @@ class SkillSyncer:
                 skills = await source.list_skills()
                 for skill in skills:
                     index.add(skill)
+                print(f"  [{source.name}] {len(skills)} skills synced")
             except Exception as e:
-                print(f"Warning: failed to sync from {source.name}: {e}")
+                print(f"  [{source.name}] FAILED: {type(e).__name__}: {e}")
 
         index.save(self.index_path)
         return index
@@ -35,7 +36,6 @@ class SkillSyncer:
     async def sync_one(self, source: SkillSource) -> list[SkillMeta]:
         """Sync from a single source."""
         skills = await source.list_skills()
-        # Merge with existing index
         index = SkillIndex.load(self.index_path)
         for skill in skills:
             index.add(skill)

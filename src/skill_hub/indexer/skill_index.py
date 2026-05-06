@@ -67,6 +67,9 @@ class SkillIndex:
         data = json.loads(path.read_text(encoding="utf-8"))
         idx = cls()
         for entry in data:
+            # Handle missing fields for backwards compatibility
+            entry.setdefault("source_url", "")
+            entry.setdefault("repo_path", "")
             idx.add(SkillMeta(**entry))
         return idx
 

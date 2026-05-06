@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import httpx
 
@@ -15,16 +16,26 @@ GITHUB_API = "https://api.github.com"
 class GitHubSource(SkillSource):
     """Pull skills from a GitHub repository."""
 
-    def __init__(self, repo: str, skill_glob: str = "*/SKILL.md", token: str | None = None):
+    def __init__(self, repo: str, skill_glob: str = "*/SKILL.md",
+                 token: str | None = None, cache_dir: str | None = None):
         self.name = repo
         self.repo = repo
         self.skill_glob = skill_glob
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         headers = {"Accept": "application/vnd.github.v3+json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
         self._client = httpx.AsyncClient(
             base_url=GITHUB_API, headers=headers, timeout=30,
         )
+
+    def _local_cache_path(self, repo_path: str) -> Path | None:
+        """Return the local cache path for a skill's SKILL.md."""
+        if not self.cache_dir:
+            return None
+        # e.g. skills_local/garrytan--gstack/browse/SKILL.md
+        safe_repo = self.repo.replace("/", "--")
+        return self.cache_dir / safe_repo / repo_path
 
     async def list_skills(self) -> list[SkillMeta]:
         """Walk the repo tree to find SKILL.md files matching the glob pattern."""
@@ -38,19 +49,21 @@ class GitHubSource(SkillSource):
         )
         tree = tree_resp.json().get("tree", [])
 
-        # Filter by glob pattern (simple: ends with /SKILL.md under matching prefix)
+        # Filter by glob pattern
         pattern_parts = self.skill_glob.replace("*/", "").replace("SKILL.md", "")
         skills = []
         for item in tree:
             if item["path"].endswith("/SKILL.md"):
                 skill_dir = item["path"].rsplit("/SKILL.md", 1)[0]
                 # Check if it matches the glob prefix
-                if self.skill_glob.startswith("*/") or skill_dir.startswith(pattern_parts.rstrip("/")):
+                if self.skill_glob.startswith("*/") or self.skill_glob.startswith("**/") or \
+                   skill_dir.startswith(pattern_parts.rstrip("/")):
                     skills.append(SkillMeta(
                         name=skill_dir.split("/")[-1],
                         registry=self.name,
                         source_url=f"https://github.com/{self.repo}/blob/{branch}/{item['path']}",
                         local_path=None,
+                        repo_path=item["path"],
                     ))
 
         # Enrich with metadata by fetching each SKILL.md
@@ -58,6 +71,13 @@ class GitHubSource(SkillSource):
             try:
                 content = await self.fetch_skill(skill)
                 skill.description, skill.use_when, skill.tags, skill.category = _parse_skill_md(content)
+
+                # Save to local cache
+                cache_path = self._local_cache_path(skill.repo_path)
+                if cache_path:
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_text(content, encoding="utf-8")
+                    skill.local_path = str(cache_path.parent)
             except Exception:
                 pass
 
@@ -68,7 +88,6 @@ class GitHubSource(SkillSource):
         # Find the SKILL.md path from source_url
         path = skill.source_url.split(f"/blob/")[-1] if "/blob/" in skill.source_url else ""
         if not path:
-            # Try common pattern
             branch = "main"
             path = f"{skill.name}/SKILL.md"
         else:
@@ -103,7 +122,7 @@ def _parse_skill_md(content: str) -> tuple[str, str, list[str], str]:
             if line.startswith("description:"):
                 description = line.split(":", 1)[1].strip().strip("'\"")
             elif line.startswith("name:"):
-                pass  # already have name from dir
+                pass
             elif line.startswith("tags:"):
                 tag_str = line.split(":", 1)[1].strip()
                 tags = [t.strip().strip("- ") for t in tag_str.split(",")]
@@ -115,7 +134,6 @@ def _parse_skill_md(content: str) -> tuple[str, str, list[str], str]:
 
     # Fallback: use first paragraph as description
     if not description:
-        # Skip frontmatter and title
         body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)
         body = re.sub(r"^#.*\n", "", body).strip()
         first_para = body.split("\n\n")[0] if body else ""

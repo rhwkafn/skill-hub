@@ -17,6 +17,7 @@ class SkillMeta:
     use_when: str = ""  # one-line trigger condition
     source_url: str = ""  # remote URL or local path
     local_path: str | None = None  # if synced locally
+    repo_path: str = ""  # relative path within the repo (e.g. "skills/tdd/SKILL.md")
 
     def to_index_entry(self) -> dict:
         """Minimal dict for the searchable index."""
@@ -27,6 +28,8 @@ class SkillMeta:
             "category": self.category,
             "tags": self.tags,
             "use_when": self.use_when,
+            "source_url": self.source_url,
+            "repo_path": self.repo_path,
         }
 
     def matches(self, query: str) -> float:

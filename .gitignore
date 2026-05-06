@@ -12,4 +12,5 @@ venv/
 .pytest_cache/
 .mypy_cache/
 skill_index.json
+skills_local/
 .DS_Store

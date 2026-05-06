@@ -154,19 +154,25 @@ Matt Pocock's "Skills For Real Engineers" — small, composable, production-grad
 skill-hub/
 ├── config/
 │   └── registries.yaml       # Source definitions (repos, paths, globs)
+├── skills_local/              # Cached SKILL.md files (gitignored)
+│   ├── garrytan--gstack/
+│   ├── mattpocock--skills/
+│   └── ...
 ├── src/skill_hub/
 │   ├── models.py              # SkillMeta data model
 │   ├── indexer/
 │   │   └── skill_index.py     # The searchable index (like a vector store)
 │   ├── sync/
 │   │   ├── base.py            # Abstract skill source
-│   │   ├── github_source.py   # Pull skills from GitHub repos
+│   │   ├── github_source.py   # Pull + cache skills from GitHub repos
 │   │   ├── local_source.py    # Pull skills from local directories
 │   │   └── syncer.py          # Multi-source orchestrator
 │   ├── registry/
 │   │   └── skill_registry.py  # Agent-facing API (search + load)
+│   ├── mcp/
+│   │   └── server.py          # MCP tool server for agent integration
 │   └── cli/
-│       └── main.py            # CLI: sync, search, info, prompt
+│       └── main.py            # CLI: sync, search, load, info, prompt
 └── tests/                     # Unit tests
 ```
 
@@ -175,11 +181,14 @@ skill-hub/
 ```bash
 pip install -e ".[dev]"
 
-# Sync skills from all configured sources
+# Sync skills + download all SKILL.md content locally (requires `gh auth login`)
 python -m skill_hub.cli.main sync
 
 # Search for a skill
 python -m skill_hub.cli.main search "phylogenetic tree"
+
+# Load a specific skill's full content (from local cache)
+python -m skill_hub.cli.main load tdd
 
 # Generate compact prompt for agent injection
 python -m skill_hub.cli.main prompt
@@ -188,35 +197,36 @@ python -m skill_hub.cli.main prompt
 python -m skill_hub.cli.main info
 ```
 
-## Usage in Your Agent
+## MCP Server (Agent Integration)
 
-```python
-from skill_hub.indexer import SkillIndex
-from skill_hub.registry import SkillRegistry
-from skill_hub.sync import GitHubSource, LocalSource
+The MCP server lets agents search and load skills through tool calls — no manual prompt injection needed.
 
-# Load the pre-built index
-index = SkillIndex.load("skill_index.json")
-registry = SkillRegistry(index, sources=[
-    GitHubSource("K-Dense-AI/scientific-agent-skills"),
-    LocalSource("D:/AI-agent/claude-app/codex-reaserch/codex-skills-workbench"),
-])
-
-# Inject compact catalog into agent system prompt
-system_prompt = f"""
-You are a research assistant.
-{registry.compact_prompt()}
-When you need a skill, call load_skill(name).
-"""
-
-# Agent searches for relevant skills
-results = registry.search("create a phylogenetic tree")
-# [{'name': 'phylogeny-workflow', 'score': 0.82, ...}]
-
-# Agent loads only the skill it needs
-content = await registry.load("phylogeny-workflow")
-# Full SKILL.md content — only loaded when actually needed
+```bash
+# Run as stdio MCP server
+python -m skill_hub.mcp.server
 ```
+
+Configure in Claude Code / Cursor / any MCP-compatible agent:
+
+```json
+{
+  "mcpServers": {
+    "skill-hub": {
+      "command": "python",
+      "args": ["-m", "skill_hub.mcp.server"]
+    }
+  }
+}
+```
+
+This exposes 4 tools to the agent:
+
+| Tool | Description |
+|------|-------------|
+| `search_skills(query)` | Find skills by natural language query |
+| `load_skill(name)` | Load full SKILL.md content from local cache |
+| `list_skill_categories()` | Get compact overview of all available skills |
+| `skill_info(name)` | Get metadata without loading full content |
 
 ## Adding New Sources
 
@@ -239,7 +249,7 @@ Then re-sync: `python -m skill_hub.cli.main sync`
 | Global load all | O(n × skill_size) | High on every turn | Breaks at ~50 skills |
 | Skills-as-RAG (this) | O(n × one_line) + O(1) per use | Low baseline, spike only when needed | Scales to 1000+ |
 
-The compact catalog for 120+ skills is roughly **3KB**. Loading all SKILL.md files would be **200KB+**.
+The compact catalog for 250+ skills is roughly **5KB**. Loading all SKILL.md files would be **500KB+**.
 
 ## License
 
