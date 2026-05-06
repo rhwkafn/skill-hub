@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "skill-hub": {
+      "command": "python",
+      "args": ["-m", "skill_hub.mcp.server"],
+      "cwd": "C:/Users/A/Desktop/apply-for-api/skill-hub"
+    }
+  }
+}
