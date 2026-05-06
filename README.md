@@ -202,8 +202,15 @@ python -m skill_hub.cli.main info
 The MCP server lets agents search and load skills through tool calls — no manual prompt injection needed.
 
 ```bash
-# Run as stdio MCP server
+# Default: keyword matching
 python -m skill_hub.mcp.server
+
+# TF-IDF: local semantic matching (no API needed, much better accuracy)
+python -m skill_hub.mcp.server --router tfidf
+
+# LLM: cheap model does routing (best accuracy, needs API)
+python -m skill_hub.mcp.server --router llm --llm-provider ollama
+python -m skill_hub.mcp.server --router llm --llm-provider openai --llm-model gpt-4o-mini
 ```
 
 Configure in Claude Code / Cursor / any MCP-compatible agent:
@@ -223,10 +230,41 @@ This exposes 4 tools to the agent:
 
 | Tool | Description |
 |------|-------------|
-| `search_skills(query)` | Find skills by natural language query |
+| `search_skills(query)` | Keyword-based skill search |
+| `suggest_skills(task)` | Semantic routing — finds best skills for complex tasks |
 | `load_skill(name)` | Load full SKILL.md content from local cache |
 | `list_skill_categories()` | Get compact overview of all available skills |
-| `skill_info(name)` | Get metadata without loading full content |
+| `skill_info(name)` | Get metadata + apply instructions |
+
+### Router Architecture
+
+The `suggest_skills` tool uses a **two-stage architecture**: cheap model routes, main model executes.
+
+```
+User: "部署修复到生产环境，注意安全"
+  │
+  ▼
+┌─────────────────────────────────────┐
+│  Router (cheap model or TF-IDF)     │
+│  Input: task + skill catalog (~2KB)  │
+│  Output: selected skills + modes    │
+│  Cost: ~$0.001 per query            │
+└──────────────┬──────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  Main Agent (expensive model)       │
+│  Input: full SKILL.md of matches    │
+│  Executes: land-and-deploy workflow  │
+│  Activates: careful (global hooks)  │
+└─────────────────────────────────────┘
+```
+
+| Router | Speed | Accuracy | Dependencies |
+|--------|-------|----------|-------------|
+| `keyword` | <1ms | Low | None |
+| `tfidf` | ~5ms | Medium | scikit-learn |
+| `llm` | ~500ms | High | HTTP API |
 
 ## Adding New Sources
 
