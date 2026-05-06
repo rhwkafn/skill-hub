@@ -32,7 +32,7 @@ from ..indexer import SkillIndex
 from ..models import SkillMode
 from ..registry import SkillRegistry
 from ..router import KeywordRouter, TFIDFRouter, LLMRouter
-from ..router.base import SkillRouter
+from ..router.base import SkillRouter, RouteOutput
 from ..router.llm import create_llm_router
 
 
@@ -146,85 +146,30 @@ def create_server(index_path: str | None = None, router: SkillRouter | None = No
 
     @mcp.tool()
     def suggest_skills(task_description: str) -> str:
-        """Semantic skill routing — find the best skills for a complex task.
+        """Semantic skill discovery — find ALL relevant skills for a task.
 
-        This is the main entry point for skill discovery. Unlike search_skills
-        (keyword matching), this uses semantic understanding to match natural
-        language task descriptions to the right skills.
+        This returns a broad set of candidates for YOU (the main model) to
+        evaluate. It does NOT decide which skills to use — that's your job.
 
-        It returns:
-        - Primary skill: the main workflow to follow
-        - Global skills: safety/config skills to activate for the session
-        - Application plan: how to combine them
+        The router does recall (find candidates), you do decision (pick + combine).
 
         Args:
-            task_description: What you need to do, in natural language.
+            task_description: The FULL task context, in natural language.
+                Don't compress or summarize — include all requirements.
                 Examples:
-                - "部署修复到生产环境，注意安全"
-                - "build a React component with tests and review code quality"
-                - "debug why the page is slow and find the root cause"
+                - "重构认证模块，兼容旧接口，跑通测试，安全部署"
+                - "build a React component with tests, review code quality, ensure security"
 
         Returns:
-            JSON with recommended skills and application plan.
+            Structured text with all candidate skills, grouped by type.
+            Use load_skill(name) to get full instructions for any skill you choose.
         """
-        # Use the router for semantic matching
-        route_results = router.route(task_description, all_skills, top_k=15)
+        route_output = router.route(task_description, all_skills, top_k=20)
 
-        if not route_results:
-            return json.dumps({"suggestion": "No matching skills found."})
+        if not route_output.candidates:
+            return "No matching skills found for this task."
 
-        # Classify by mode
-        global_skills = []
-        primary = []
-        complementary = []
-
-        for r in route_results:
-            d = {
-                "name": r.skill.name,
-                "registry": r.skill.registry,
-                "score": round(r.score, 3),
-                "mode": r.skill.mode.value,
-                "reason": r.reason,
-                "description": r.skill.description[:120],
-                "triggers": r.skill.triggers[:3],
-                "tools_required": r.skill.tools_required,
-                "has_hooks": r.skill.has_hooks,
-            }
-            if r.skill.mode == SkillMode.GLOBAL:
-                global_skills.append(d)
-            elif r.score >= 0.15 and not primary:
-                primary.append(d)
-            else:
-                complementary.append(d)
-
-        # Build plan
-        instructions = []
-        if global_skills:
-            names = ", ".join(s["name"] for s in global_skills[:3])
-            instructions.append(
-                f"ACTIVATE GLOBAL: {names} — inject into system prompt. "
-                f"These add safety hooks and tool restrictions."
-            )
-        if primary:
-            s = primary[0]
-            instructions.append(
-                f"LOAD PRIMARY: {s['name']} — follow its workflow. "
-                f"Reason: {s['reason']}."
-            )
-        if complementary:
-            names = ", ".join(s["name"] for s in complementary[:3])
-            instructions.append(f"OPTIONAL: {names} — load if task expands.")
-
-        plan = {
-            "task": task_description,
-            "router": router.name,
-            "primary_skill": primary[0] if primary else None,
-            "global_skills": global_skills[:3],
-            "complementary_skills": complementary[:3],
-            "application_plan": " | ".join(instructions) if instructions else "No clear match.",
-        }
-
-        return json.dumps(plan, indent=2, ensure_ascii=False)
+        return route_output.to_prompt()
 
     @mcp.tool()
     def list_skill_categories() -> str:

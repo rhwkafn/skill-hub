@@ -238,33 +238,36 @@ This exposes 4 tools to the agent:
 
 ### Router Architecture
 
-The `suggest_skills` tool uses a **two-stage architecture**: cheap model routes, main model executes.
+The router does **recall** (find candidates), the main model does **decision** (pick + combine).
 
 ```
-User: "部署修复到生产环境，注意安全"
+User: "refactor auth module, keep compatibility, run tests, deploy safely"
   │
   ▼
-┌─────────────────────────────────────┐
-│  Router (cheap model or TF-IDF)     │
-│  Input: task + skill catalog (~2KB)  │
-│  Output: selected skills + modes    │
-│  Cost: ~$0.001 per query            │
-└──────────────┬──────────────────────┘
+┌──────────────────────────────────────┐
+│  Router (TF-IDF or cheap LLM)        │
+│  Job: RECALL — find all candidates   │
+│  Returns: 20 candidates + metadata   │
+│  Does NOT decide which to use        │
+└──────────────┬───────────────────────┘
                │
                ▼
-┌─────────────────────────────────────┐
-│  Main Agent (expensive model)       │
-│  Input: full SKILL.md of matches    │
-│  Executes: land-and-deploy workflow  │
-│  Activates: careful (global hooks)  │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  Main Model (your agent)             │
+│  Job: DECISION — pick + combine      │
+│  Sees: full task context + candidates│
+│  Loads: only the skills it chooses   │
+│  Understands: dependencies & order   │
+└──────────────────────────────────────┘
 ```
+
+This preserves depth — the main model sees all candidates and the full task context, not a compressed summary.
 
 | Router | Speed | Accuracy | Dependencies |
 |--------|-------|----------|-------------|
 | `keyword` | <1ms | Low | None |
 | `tfidf` | ~5ms | Medium | scikit-learn |
-| `llm` | ~500ms | High | HTTP API |
+| `llm` | ~500ms | High | HTTP API (TF-IDF recall + LLM re-rank) |
 
 ## Adding New Sources
 
