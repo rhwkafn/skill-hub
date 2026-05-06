@@ -67,6 +67,8 @@ This registry aggregates skills from multiple open-source repositories:
 | [nature-skills](https://github.com/Yuan1z0825/nature-skills) | GitHub | Nature journal academic writing and scientific figure skills | 4+ |
 | [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | GitHub | Comprehensive scientific research agent skills | 136 |
 | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | GitHub | Production engineering skills (testing, CI/CD, security, code review) | 21 |
+| [garrytan/gstack](https://github.com/garrytan/gstack) | GitHub | Headless browser QA, design review, deployment testing, and agent workflow skills | 50 |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | GitHub | Real engineering skills — TDD, diagnosis, prototyping, architecture, productivity | 27 |
 
 ### codex-skills-workbench (Local)
 
@@ -114,6 +116,37 @@ Production-grade engineering skills by Addy Osmani:
 - `debugging-and-error-recovery` — Systematic debugging methodology
 - `frontend-ui-engineering` — UI component architecture and patterns
 - ... and 13 more
+
+### garrytan/gstack (GitHub)
+
+Garry Tan's gstack — a comprehensive agent skill framework for QA, design review, and deployment workflows:
+
+- `browse` — Headless browser navigation, interaction, and screenshot capture
+- `qa` / `qa-only` — Quality assurance testing and verification workflows
+- `design-review` / `design-html` / `design-consultation` — Design review and feedback loops
+- `ship` / `land-and-deploy` — Deployment and release management
+- `review` / `devex-review` / `plan-eng-review` — Multi-perspective code and architecture reviews
+- `investigate` / `learn` — Systematic debugging and knowledge acquisition
+- `guard` / `freeze` / `unfreeze` — Workflow state management and protection
+- `context-save` / `context-restore` — Session context persistence across agent runs
+- `skillify` — Convert any workflow into a reusable skill
+- ... and 38 more
+
+### mattpocock/skills (GitHub)
+
+Matt Pocock's "Skills For Real Engineers" — small, composable, production-grade engineering skills:
+
+- `tdd` — Test-driven development workflow with red-green-refactor cycle
+- `diagnose` — Systematic debugging with human-in-the-loop escalation
+- `prototype` — Rapid prototyping with logic and UI separation
+- `improve-codebase-architecture` — Architecture improvement with interface design and deepening
+- `grill-with-docs` — Documentation-driven code review with ADR and context formats
+- `triage` — Issue triage and prioritization
+- `to-prd` / `to-issues` — Convert ideas to PRDs and issues
+- `zoom-out` — High-level codebase analysis and refactoring plans
+- `caveman` — Minimal, no-frills task execution mode
+- `grill-me` — Socratic questioning for better problem understanding
+- ... and 17 more
 
 ## Architecture
 

@@ -27,3 +27,13 @@ registries:
     type: github
     repo: "K-Dense-AI/scientific-agent-skills"
     skill_glob: "scientific-skills/*/SKILL.md"
+
+  - name: gstack
+    type: github
+    repo: "garrytan/gstack"
+    skill_glob: "**/SKILL.md"
+
+  - name: mattpocock-skills
+    type: github
+    repo: "mattpocock/skills"
+    skill_glob: "skills/*/SKILL.md"
