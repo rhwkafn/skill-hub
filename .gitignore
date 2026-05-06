@@ -13,4 +13,6 @@ venv/
 .mypy_cache/
 skill_index.json
 skills_local/
+.mcp.json
+config/registries.yaml
 .DS_Store
