@@ -80,6 +80,9 @@ class GitHubSource(SkillSource):
                 skill.has_hooks = meta["has_hooks"]
                 skill.triggers = meta["triggers"]
 
+                # Build decision card from the content we already have
+                skill.build_decision_card(content)
+
                 # Save to local cache
                 cache_path = self._local_cache_path(skill.repo_path)
                 if cache_path:

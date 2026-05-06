@@ -30,6 +30,7 @@ class SkillMeta:
     tools_required: list[str] = field(default_factory=list)  # e.g. ["Bash", "Read"]
     has_hooks: bool = False  # whether the skill defines PreToolUse/PostToolUse hooks
     triggers: list[str] = field(default_factory=list)  # activation phrases
+    decision_card: str = ""  # compact structured summary for the selector (~50 tokens)
 
     def to_index_entry(self) -> dict:
         """Minimal dict for the searchable index."""
@@ -46,7 +47,63 @@ class SkillMeta:
             "tools_required": self.tools_required,
             "has_hooks": self.has_hooks,
             "triggers": self.triggers,
+            "decision_card": self.decision_card,
         }
+
+    def build_decision_card(self, content_head: str = "") -> str:
+        """Generate a compact decision card for the selector.
+
+        Format: structured, ~50 tokens per skill.
+        The selector sees these cards instead of raw SKILL.md.
+        """
+        parts = []
+
+        # Header: [name] mode=X hooks=true
+        flags = []
+        if self.has_hooks:
+            flags.append("hooks=true")
+        if self.tools_required:
+            flags.append(f"needs={','.join(self.tools_required[:3])}")
+        flag_str = f" {' '.join(flags)}" if flags else ""
+        parts.append(f"[{self.name}] mode={self.mode.value}{flag_str}")
+
+        # When: triggers or use_when
+        when_parts = self.triggers[:3] if self.triggers else []
+        if self.use_when and self.use_when not in when_parts:
+            when_parts.append(self.use_when[:80])
+        if when_parts:
+            parts.append(f"When: {', '.join(when_parts)}")
+
+        # What: extract from content head or description
+        what = self._extract_what(content_head)
+        if what:
+            parts.append(f"What: {what}")
+
+        self.decision_card = "\n".join(parts)
+        return self.decision_card
+
+    def _extract_what(self, content_head: str) -> str:
+        """Extract a one-sentence 'what does this skill do' from content."""
+        import re
+
+        # Try description first (already parsed from frontmatter)
+        if self.description and len(self.description) > 10:
+            # Take first sentence
+            desc = self.description.split(".")[0].strip()
+            if len(desc) > 10:
+                return desc[:120]
+
+        # Try first meaningful paragraph from content
+        if content_head:
+            body = re.sub(r"^---.*?---\s*", "", content_head, flags=re.DOTALL)
+            body = re.sub(r"^#.*\n", "", body).strip()
+            # Skip empty lines
+            for line in body.split("\n"):
+                line = line.strip()
+                if line and len(line) > 15 and not line.startswith("|"):
+                    return line[:120]
+
+        return ""
 
     def matches(self, query: str) -> float:
         """Simple relevance score against a query string. Returns 0.0-1.0."""

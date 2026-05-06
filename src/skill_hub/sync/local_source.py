@@ -31,7 +31,7 @@ class LocalSource(SkillSource):
             skill_dir = skill_file.parent
             content = skill_file.read_text(encoding="utf-8")
             description, use_when, tags, category = _parse_skill_frontmatter(content)
-            skills.append(SkillMeta(
+            skill = SkillMeta(
                 name=skill_dir.name,
                 registry=self.name,
                 description=description,
@@ -40,7 +40,9 @@ class LocalSource(SkillSource):
                 use_when=use_when,
                 source_url=str(skill_file),
                 local_path=str(skill_dir),
-            ))
+            )
+            skill.build_decision_card(content)
+            skills.append(skill)
         return skills
 
     def _from_manifest(self) -> list[SkillMeta]:
@@ -49,7 +51,7 @@ class LocalSource(SkillSource):
         skills = []
         for entry in data:
             skill_dir = self.base_path / "skills" / entry.get("skillDir", entry.get("skillName", ""))
-            skills.append(SkillMeta(
+            skill = SkillMeta(
                 name=entry.get("skillName", entry.get("name", "")),
                 registry=self.name,
                 description=entry.get("description", entry.get("useWhen", "")),
@@ -58,7 +60,10 @@ class LocalSource(SkillSource):
                 use_when=entry.get("useWhen", ""),
                 source_url=str(skill_dir),
                 local_path=str(skill_dir) if skill_dir.exists() else None,
-            ))
+            )
+            # Build decision card from description if available
+            skill.build_decision_card()
+            skills.append(skill)
         return skills
 
     async def fetch_skill(self, skill: SkillMeta) -> str:
