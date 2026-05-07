@@ -19,8 +19,10 @@ class LocalSource(SkillSource):
         self.skill_glob = skill_glob
         self.manifest_path = Path(manifest) if manifest else None
 
-    async def list_skills(self) -> list[SkillMeta]:
+    async def list_skills(self, skip_names: set[str] | None = None) -> list[SkillMeta]:
         """Discover skills by glob or manifest."""
+        skip = skip_names or set()
+
         # If a manifest exists, prefer it
         if self.manifest_path and self.manifest_path.exists():
             return self._from_manifest()
@@ -29,6 +31,8 @@ class LocalSource(SkillSource):
         skills = []
         for skill_file in self.base_path.glob(self.skill_glob):
             skill_dir = skill_file.parent
+            if skill_dir.name in skip:
+                continue
             content = skill_file.read_text(encoding="utf-8")
             description, use_when, tags, category = _parse_skill_frontmatter(content)
             skill = SkillMeta(

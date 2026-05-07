@@ -36,34 +36,37 @@ class SkillSyncer:
 
         for source in self.sources:
             try:
-                skills = await source.list_skills()
+                # Pass existing names so source can skip expensive operations
+                skip = existing if not force else set()
+                skills = await source.list_skills(skip_names=skip)
                 added = 0
                 for skill in skills:
-                    if force or skill.name not in existing:
+                    if skill.name not in existing:
                         index.add(skill)
                         existing.add(skill.name)
                         added += 1
                         new_count += 1
-                skipped = len(skills) - added
-                msg = f"  [{source.name}] {len(skills)} found, {added} processed"
-                if skipped:
-                    msg += f", {skipped} skipped"
-                print(msg)
+                print(f"  [{source.name}] {len(skills)} found, {added} new")
             except Exception as e:
                 print(f"  [{source.name}] FAILED: {type(e).__name__}: {e}")
 
         index.save(self.index_path)
         if new_count:
-            print(f"  Total: {new_count} skills processed")
+            print(f"  Total: {new_count} new skills added ({len(index.skills)} in index)")
         else:
             print(f"  No new skills found. Index unchanged ({len(index.skills)} total).")
         return index
 
-    async def sync_one(self, source: SkillSource) -> list[SkillMeta]:
+    async def sync_one(self, source: SkillSource, force: bool = False) -> list[SkillMeta]:
         """Sync from a single source."""
-        skills = await source.list_skills()
         index = SkillIndex.load(self.index_path)
+        skip = set(index.skills.keys()) if not force else set()
+        skills = await source.list_skills(skip_names=skip)
+        added = 0
         for skill in skills:
-            index.add(skill)
+            if skill.name not in index.skills or force:
+                index.add(skill)
+                added += 1
         index.save(self.index_path)
+        print(f"  [{source.name}] {len(skills)} found, {added} new")
         return skills

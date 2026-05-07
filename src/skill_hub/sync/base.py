@@ -13,8 +13,13 @@ class SkillSource(ABC):
     name: str
 
     @abstractmethod
-    async def list_skills(self) -> list[SkillMeta]:
-        """Discover all available skills from this source."""
+    async def list_skills(self, skip_names: set[str] | None = None) -> list[SkillMeta]:
+        """Discover all available skills from this source.
+
+        Args:
+            skip_names: Set of skill names to skip (already in index).
+                        Source should avoid expensive operations for these.
+        """
         ...
 
     @abstractmethod

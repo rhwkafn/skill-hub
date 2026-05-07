@@ -37,8 +37,15 @@ class GitHubSource(SkillSource):
         safe_repo = self.repo.replace("/", "--")
         return self.cache_dir / safe_repo / repo_path
 
-    async def list_skills(self) -> list[SkillMeta]:
-        """Walk the repo tree to find SKILL.md files matching the glob pattern."""
+    async def list_skills(self, skip_names: set[str] | None = None) -> list[SkillMeta]:
+        """Walk the repo tree to find SKILL.md files matching the glob pattern.
+
+        Args:
+            skip_names: Set of skill names to skip (already in index).
+                        Skips the expensive GitHub API fetch for these skills.
+        """
+        skip = skip_names or set()
+
         # Get default branch
         repo_info = (await self._client.get(f"/repos/{self.repo}")).json()
         branch = repo_info.get("default_branch", "main")
@@ -52,19 +59,27 @@ class GitHubSource(SkillSource):
         # Filter by glob pattern
         pattern_parts = self.skill_glob.replace("*/", "").replace("SKILL.md", "")
         skills = []
+        skipped = 0
         for item in tree:
             if item["path"].endswith("/SKILL.md"):
                 skill_dir = item["path"].rsplit("/SKILL.md", 1)[0]
                 # Check if it matches the glob prefix
                 if self.skill_glob.startswith("*/") or self.skill_glob.startswith("**/") or \
                    skill_dir.startswith(pattern_parts.rstrip("/")):
+                    name = skill_dir.split("/")[-1]
+                    if name in skip:
+                        skipped += 1
+                        continue
                     skills.append(SkillMeta(
-                        name=skill_dir.split("/")[-1],
+                        name=name,
                         registry=self.name,
                         source_url=f"https://github.com/{self.repo}/blob/{branch}/{item['path']}",
                         local_path=None,
                         repo_path=item["path"],
                     ))
+
+        if skipped:
+            print(f"    [{self.name}] skipped {skipped} cached skills (API fetch avoided)")
 
         # Enrich with metadata by fetching each SKILL.md
         for skill in skills:
@@ -92,8 +107,8 @@ class GitHubSource(SkillSource):
                     cache_path.parent.mkdir(parents=True, exist_ok=True)
                     cache_path.write_text(content, encoding="utf-8")
                     skill.local_path = str(cache_path.parent)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"    [{self.name}] WARN: failed to fetch {skill.name}: {type(e).__name__}: {e}")
 
         return skills
 
