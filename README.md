@@ -1,216 +1,96 @@
 # skill-hub
 
-**Skills-as-RAG**: A lightweight skill registry that treats agent skills like retrieval-augmented generation — index first, load on demand.
+**Skills-as-RAG**: A lightweight agent skill registry that treats skills like retrieval-augmented generation — index first, load on demand.
 
-## The Problem
+## What It Does
 
-Multi-agent systems often load all available skills into context at startup. As skill libraries grow to hundreds of entries across multiple sources, this becomes:
-
-- **Token-expensive**: Loading 100+ SKILL.md files wastes thousands of tokens per agent turn
-- **Slow**: Parsing large skill catalogs adds latency to every inference call
-- **Brittle**: Global skill lists make it hard to maintain, version, and update skills across projects
-
-## The Solution: Skills-as-RAG
-
-Instead of loading every skill's full content, we maintain a **lightweight searchable index** (like a RAG vector store, but for agent capabilities). Agents see only a compact catalog:
+Instead of loading every skill's full content into context (expensive, slow), skill-hub maintains a **compact searchable index**. Agents search the index, then load only the skills they need.
 
 ```
-# Available Skills (injected into system prompt)
-
-## Plotting
-- **raincloud-plot**: Build raincloud plots with distributions and raw points
-- **ggplot2-richtext-fixes**: Fix ggplot2 labels or export rendering issues
-
-## Analysis
-- **statistical-analysis**: Run statistical tests and generate reports
-
-## Writing
-- **nature-polishing**: Polish manuscripts to Nature journal standards
-```
-
-When an agent identifies a relevant skill, it calls `load_skill(name)` to fetch the full instructions — just like RAG retrieves relevant documents.
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Agent System Prompt                    │
-│                                                          │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │         Compact Skill Catalog (index)            │    │
-│  │  - name: "raincloud-plot"                        │    │
-│  │    use_when: "Build raincloud plots..."          │    │
-│  │  - name: "statistical-analysis"                  │    │
-│  │    use_when: "Run statistical tests..."          │    │
-│  │  ... (one line per skill, ~2KB total)            │    │
-│  └─────────────────────────────────────────────────┘    │
-│                         │                                │
-│                    search("plot")                        │
-│                         │                                │
-│                         ▼                                │
-│              load_skill("raincloud-plot")                 │
-│                         │                                │
-│                         ▼                                │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │          Full SKILL.md (loaded on demand)        │    │
-│  │  Detailed workflow, code templates, references   │    │
-│  └─────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Skill Sources
-
-This registry aggregates skills from multiple open-source repositories:
-
-| Source | Type | Description | Skills |
-|--------|------|-------------|--------|
-| [codex-skills-workbench](D:/AI-agent/claude-app/codex-reaserch/codex-skills-workbench) | Local | Research workflow skills (ecology, plotting, data pipelines) | 16 |
-| [codex-skills-workbench](https://github.com/Jinze-Lee/codex-skills-workbench) | GitHub | Open-source version of the above, same structure | 16 |
-| [nature-skills](https://github.com/Yuan1z0825/nature-skills) | GitHub | Nature journal academic writing and scientific figure skills | 4+ |
-| [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | GitHub | Comprehensive scientific research agent skills | 136 |
-| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | GitHub | Production engineering skills (testing, CI/CD, security, code review) | 21 |
-| [garrytan/gstack](https://github.com/garrytan/gstack) | GitHub | Headless browser QA, design review, deployment testing, and agent workflow skills | 50 |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | GitHub | Real engineering skills — TDD, diagnosis, prototyping, architecture, productivity | 27 |
-
-### codex-skills-workbench (Local)
-
-Skills for ecological research, data visualization, and academic workflows:
-
-- `ggplot2-richtext-fixes` — Fix ggplot2 superscript and richtext rendering
-- `hypervolume-workflow` — Ecological niche and trait-space analysis
-- `keyword-literature-download` — Search and download scholarly papers
-- `phylogeny-workflow` — Phylogenetic tree matching and visualization
-- `raincloud-plot-guide` — Build raincloud plots
-- `weighted-data-pipeline` — End-to-end weighted data workflows
-- ... and 10 more
-
-### nature-skills (GitHub)
-
-Skills aligned with Nature journal standards:
-
-- `nature-figure` — Scientific figure creation following Nature guidelines
-- `nature-data` — Data processing and analysis for Nature submissions
-- `nature-paper2ppt` — Convert papers to presentation slides
-- `nature-polishing` — Manuscript polishing for Nature standards
-
-### scientific-agent-skills (GitHub)
-
-A massive collection covering research, engineering, and analysis:
-
-- `scanpy`, `anndata`, `scvelo` — Single-cell analysis
-- `rdkit`, `deepchem` — Molecular chemistry
-- `pytorch-lightning`, `transformers` — ML/DL
-- `statistical-analysis`, `exploratory-data-analysis` — Statistics
-- `scientific-writing`, `scientific-visualization` — Publishing
-- `literature-review`, `paper-lookup` — Literature
-- ... and 80+ more
-
-### addyosmani/agent-skills (GitHub)
-
-Production-grade engineering skills by Addy Osmani:
-
-- `code-review-and-quality` — Code review, linting, quality gates
-- `test-driven-development` — TDD workflow and test strategy
-- `ci-cd-and-automation` — CI/CD pipeline design and automation
-- `security-and-hardening` — Security auditing and hardening
-- `performance-optimization` — Profiling and optimization patterns
-- `api-and-interface-design` — API design and contract-driven development
-- `debugging-and-error-recovery` — Systematic debugging methodology
-- `frontend-ui-engineering` — UI component architecture and patterns
-- ... and 13 more
-
-### garrytan/gstack (GitHub)
-
-Garry Tan's gstack — a comprehensive agent skill framework for QA, design review, and deployment workflows:
-
-- `browse` — Headless browser navigation, interaction, and screenshot capture
-- `qa` / `qa-only` — Quality assurance testing and verification workflows
-- `design-review` / `design-html` / `design-consultation` — Design review and feedback loops
-- `ship` / `land-and-deploy` — Deployment and release management
-- `review` / `devex-review` / `plan-eng-review` — Multi-perspective code and architecture reviews
-- `investigate` / `learn` — Systematic debugging and knowledge acquisition
-- `guard` / `freeze` / `unfreeze` — Workflow state management and protection
-- `context-save` / `context-restore` — Session context persistence across agent runs
-- `skillify` — Convert any workflow into a reusable skill
-- ... and 38 more
-
-### mattpocock/skills (GitHub)
-
-Matt Pocock's "Skills For Real Engineers" — small, composable, production-grade engineering skills:
-
-- `tdd` — Test-driven development workflow with red-green-refactor cycle
-- `diagnose` — Systematic debugging with human-in-the-loop escalation
-- `prototype` — Rapid prototyping with logic and UI separation
-- `improve-codebase-architecture` — Architecture improvement with interface design and deepening
-- `grill-with-docs` — Documentation-driven code review with ADR and context formats
-- `triage` — Issue triage and prioritization
-- `to-prd` / `to-issues` — Convert ideas to PRDs and issues
-- `zoom-out` — High-level codebase analysis and refactoring plans
-- `caveman` — Minimal, no-frills task execution mode
-- `grill-me` — Socratic questioning for better problem understanding
-- ... and 17 more
-
-## Architecture
-
-```
-skill-hub/
-├── config/
-│   └── registries.yaml       # Source definitions (repos, paths, globs)
-├── skills_local/              # Cached SKILL.md files (gitignored)
-│   ├── garrytan--gstack/
-│   ├── mattpocock--skills/
-│   └── ...
-├── src/skill_hub/
-│   ├── models.py              # SkillMeta data model
-│   ├── indexer/
-│   │   └── skill_index.py     # The searchable index (like a vector store)
-│   ├── sync/
-│   │   ├── base.py            # Abstract skill source
-│   │   ├── github_source.py   # Pull + cache skills from GitHub repos
-│   │   ├── local_source.py    # Pull skills from local directories
-│   │   └── syncer.py          # Multi-source orchestrator
-│   ├── registry/
-│   │   └── skill_registry.py  # Agent-facing API (search + load)
-│   ├── mcp/
-│   │   └── server.py          # MCP tool server for agent integration
-│   └── cli/
-│       └── main.py            # CLI: sync, search, load, info, prompt
-└── tests/                     # Unit tests
+Agent System Prompt (~5KB index, 250+ skills)
+  │
+  ├── search("plot") → 3 candidates found
+  │
+  └── load_skill("raincloud-plot") → full SKILL.md loaded on demand
 ```
 
 ## Quick Start
 
 ```bash
-pip install -e ".[dev]"
+# Install
+pip install -e .
 
-# Sync skills + download all SKILL.md content locally (requires `gh auth login`)
+# 1. Configure sources (edit config/registries.yaml)
+# 2. Sync skills from all sources
 python -m skill_hub.cli.main sync
 
-# Search for a skill
+# 3. Search
 python -m skill_hub.cli.main search "phylogenetic tree"
 
-# Load a specific skill's full content (from local cache)
+# 4. Load a specific skill
 python -m skill_hub.cli.main load tdd
 
-# Generate compact prompt for agent injection
+# 5. Generate compact prompt for agent injection
 python -m skill_hub.cli.main prompt
-
-# Show index stats
-python -m skill_hub.cli.main info
 ```
 
-## MCP Server (Agent Integration)
+### Prerequisites
 
-The MCP server lets agents search and load skills through tool calls — no manual prompt injection needed.
+- Python 3.10+
+- `gh auth login` for GitHub API access (avoids rate limits)
+
+## How It Works
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Sources (config/registries.yaml)                           │
+│  ├── GitHub repos (6 sources)                               │
+│  └── Local directories                                      │
+│              │                                              │
+│              ▼ sync                                         │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  skills_local/          (cached SKILL.md files)       │  │
+│  │  skill_index.json       (compact searchable index)    │  │
+│  └──────────────────────────────────────────────────────┘  │
+│              │                                              │
+│              ▼ serve                                        │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  MCP Server (4 tools exposed to agent)                │  │
+│  │  ├── search_skills(query)    — keyword search         │  │
+│  │  ├── suggest_skills(task)    — semantic routing       │  │
+│  │  ├── load_skill(name)        — full SKILL.md content  │  │
+│  │  └── list_skill_categories() — compact overview       │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `sync` | Discover + index skills from all sources (incremental by default) |
+| `sync --force` | Full rebuild — re-process all skills |
+| `sync --cache-dir skills_local` | Also download full SKILL.md files locally |
+| `search <query>` | Search the index by keyword |
+| `load <name>` | Print full SKILL.md content for a skill |
+| `info` | Show index stats |
+| `prompt` | Generate compact skill catalog for agent injection |
+
+### MCP Server (Agent Integration)
+
+The MCP server lets agents search and load skills through tool calls:
 
 ```bash
-# Default: keyword matching
+# Default: TF-IDF semantic matching (no API needed)
 python -m skill_hub.mcp.server
 
-# TF-IDF: local semantic matching (no API needed, much better accuracy)
-python -m skill_hub.mcp.server --router tfidf
+# Keyword matching (fastest, less accurate)
+python -m skill_hub.mcp.server --router keyword
 
-# LLM: cheap model does routing (best accuracy, needs API)
+# LLM routing (best accuracy, needs API)
 python -m skill_hub.mcp.server --router llm --llm-provider ollama
-python -m skill_hub.mcp.server --router llm --llm-provider openai --llm-model gpt-4o-mini
 ```
 
 Configure in Claude Code / Cursor / any MCP-compatible agent:
@@ -220,54 +100,38 @@ Configure in Claude Code / Cursor / any MCP-compatible agent:
   "mcpServers": {
     "skill-hub": {
       "command": "python",
-      "args": ["-m", "skill_hub.mcp.server"]
+      "args": ["-m", "skill_hub.mcp.server"],
+      "cwd": "/path/to/skill-hub"
     }
   }
 }
 ```
 
-This exposes 4 tools to the agent:
-
-| Tool | Description |
-|------|-------------|
-| `search_skills(query)` | Keyword-based skill search |
-| `suggest_skills(task)` | Semantic routing — finds best skills for complex tasks |
-| `load_skill(name)` | Load full SKILL.md content from local cache |
-| `list_skill_categories()` | Get compact overview of all available skills |
-| `skill_info(name)` | Get metadata + apply instructions |
-
 ### Router Architecture
 
-The router does **recall** (find candidates), the main model does **decision** (pick + combine).
+The router does **recall** (find candidates), the main model does **decision** (pick + combine):
 
 ```
-User: "refactor auth module, keep compatibility, run tests, deploy safely"
+User: "refactor auth, run tests, deploy safely"
   │
   ▼
-┌──────────────────────────────────────┐
-│  Router (TF-IDF or cheap LLM)        │
-│  Job: RECALL — find all candidates   │
-│  Returns: 20 candidates + metadata   │
-│  Does NOT decide which to use        │
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│  Main Model (your agent)             │
-│  Job: DECISION — pick + combine      │
-│  Sees: full task context + candidates│
-│  Loads: only the skills it chooses   │
-│  Understands: dependencies & order   │
-└──────────────────────────────────────┘
+Router (TF-IDF or cheap LLM)
+  Job: RECALL — find 20 candidates
+  Returns: candidates + metadata
+  Does NOT decide which to use
+  │
+  ▼
+Main Model (your agent)
+  Job: DECISION — pick + combine
+  Sees: full task context + candidates
+  Loads: only the skills it chooses
 ```
-
-This preserves depth — the main model sees all candidates and the full task context, not a compressed summary.
 
 | Router | Speed | Accuracy | Dependencies |
 |--------|-------|----------|-------------|
 | `keyword` | <1ms | Low | None |
 | `tfidf` | ~5ms | Medium | scikit-learn |
-| `llm` | ~500ms | High | HTTP API (TF-IDF recall + LLM re-rank) |
+| `llm` | ~500ms | High | HTTP API |
 
 ## Adding New Sources
 
@@ -281,16 +145,69 @@ registries:
     skill_glob: "skills/*/SKILL.md"
 ```
 
-Then re-sync: `python -m skill_hub.cli.main sync`
+Then: `python -m skill_hub.cli.main sync`
 
-## How This Differs from Global Skill Loading
+For local sources:
 
-| Approach | Context Cost | Latency | Scalability |
-|----------|-------------|---------|-------------|
-| Global load all | O(n × skill_size) | High on every turn | Breaks at ~50 skills |
-| Skills-as-RAG (this) | O(n × one_line) + O(1) per use | Low baseline, spike only when needed | Scales to 1000+ |
+```yaml
+  - name: my-local-skills
+    type: local
+    path: "/path/to/skills"
+    skill_glob: "*/SKILL.md"
+```
 
-The compact catalog for 250+ skills is roughly **5KB**. Loading all SKILL.md files would be **500KB+**.
+## Project Structure
+
+```
+skill-hub/
+├── config/
+│   └── registries.yaml          # Source definitions (gitignored — has local paths)
+├── dashboard/
+│   ├── index.html               # Interactive skill dashboard (English)
+│   ├── index_zh.html            # Chinese version
+│   └── gen.py                   # Regenerate dashboards from skill_index.json
+├── src/skill_hub/
+│   ├── models.py                # SkillMeta data model
+│   ├── indexer/
+│   │   └── skill_index.py       # Searchable index (like a vector store)
+│   ├── sync/
+│   │   ├── base.py              # Abstract skill source
+│   │   ├── github_source.py     # Pull + cache skills from GitHub repos
+│   │   ├── local_source.py      # Pull skills from local directories
+│   │   └── syncer.py            # Multi-source orchestrator (incremental)
+│   ├── registry/
+│   │   └── skill_registry.py    # Agent-facing API (search + load)
+│   ├── router/                  # Skill routing (keyword / TF-IDF / LLM)
+│   ├── selector/                # Skill selection (disabled by default)
+│   ├── mcp/
+│   │   └── server.py            # MCP tool server
+│   └── cli/
+│       └── main.py              # CLI entry point
+├── skill_index.json             # Generated index (gitignored)
+├── skills_local/                # Cached SKILL.md files (gitignored)
+└── tests/
+```
+
+## Skill Sources
+
+| Source | Skills | Description |
+|--------|--------|-------------|
+| [scientific-agent-skills](https://github.com/K-Dense-AI/scientific-agent-skills) | 137 | Scientific research — single-cell analysis, ML/DL, molecular chemistry, statistics |
+| [gstack](https://github.com/garrytan/gstack) | 49 | QA, design review, deployment, browser automation |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | 27 | TDD, debugging, prototyping, architecture |
+| [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | 21 | Code review, CI/CD, security, performance |
+| [codex-skills-workbench](https://github.com/Jinze-Lee/codex-skills-workbench) | 17 | Ecology, plotting, data pipelines, academic workflows |
+| [nature-skills](https://github.com/Yuan1z0825/nature-skills) | 5 | Nature journal writing, figures, data processing |
+
+## Dashboard
+
+Open `dashboard/index.html` in a browser to explore all skills interactively — filter by domain, source, or mode; search by name/description.
+
+To regenerate after syncing:
+
+```bash
+python dashboard/gen.py
+```
 
 ## License
 
