@@ -76,22 +76,85 @@ class LocalSource(SkillSource):
 
 
 def _parse_skill_frontmatter(content: str) -> tuple[str, str, list[str], str]:
-    """Quick frontmatter parse for local SKILL.md files."""
+    """Parse frontmatter from SKILL.md files.
+
+    Handles: BOM prefix, multiline description (|, >, or indented continuation).
+    """
     import re
+
     description = ""
     use_when = ""
     tags = []
     category = ""
 
+    # Strip BOM if present
+    if content.startswith("\ufeff"):
+        content = content[1:]
+
     fm_match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if fm_match:
-        fm = fm_match.group(1)
-        for line in fm.split("\n"):
-            if line.startswith("description:"):
-                description = line.split(":", 1)[1].strip().strip("'\"")
-            elif line.startswith("tags:"):
-                tag_str = line.split(":", 1)[1].strip()
-                tags = [t.strip().strip("- ") for t in tag_str.split(",")]
+    if not fm_match:
+        return description, use_when, tags, category
+
+    fm = fm_match.group(1)
+    lines = fm.split("\n")
+
+    current_key = None
+    current_list = []
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Top-level key: value
+        key_match = re.match(r"^(\w[\w-]*):\s*(.*)", stripped)
+        if key_match:
+            # Flush previous list field
+            if current_key and current_list:
+                if current_key == "tags":
+                    tags = current_list
+                current_list = []
+                current_key = None
+
+            key = key_match.group(1)
+            value = key_match.group(2).strip()
+
+            if key == "description":
+                if value in ("|", ">", "|+", "|-", ">+", ">-"):
+                    # Block scalar — collect continuation lines
+                    current_key = "description"
+                    current_list = []
+                elif value:
+                    description = value.strip("'\"")
+            elif key == "tags":
+                if not value:
+                    current_key = "tags"
+                    current_list = []
+                else:
+                    tags = [v.strip().strip("- ") for v in value.split(",")]
+            continue
+
+        # Continuation lines for multiline fields
+        if current_key and (line.startswith("  ") or stripped.startswith("- ")):
+            if current_key == "description":
+                current_list.append(stripped)
+            elif current_key == "tags" and stripped.startswith("- "):
+                current_list.append(stripped[2:].strip().strip("'\""))
+            continue
+
+    # Flush remaining
+    if current_key == "description" and current_list:
+        description = " ".join(v for v in current_list if v).strip()
+    elif current_key == "tags" and current_list:
+        tags = current_list
+
+    # Fallback: first paragraph if no description
+    if not description:
+        body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)
+        body = re.sub(r"^#.*\n", "", body).strip()
+        for para in body.split("\n\n"):
+            para = para.strip()
+            if para and len(para) > 15 and not para.startswith("|") and not para.startswith("-"):
+                description = para[:200]
+                break
 
     uw_match = re.search(r"use[_\s]when:\s*(.+?)(?:\n|$)", content, re.IGNORECASE)
     if uw_match:

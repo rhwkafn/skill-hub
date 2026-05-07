@@ -129,6 +129,10 @@ def _parse_skill_md(content: str) -> dict:
     """
     from ..models import SkillMode
 
+    # Strip BOM if present
+    if content.startswith("\ufeff"):
+        content = content[1:]
+
     description = ""
     use_when = ""
     tags = []
@@ -189,7 +193,7 @@ def _parse_skill_md(content: str) -> dict:
                     current_key = None
 
                 if key == "description":
-                    if value in ("|", ">"):
+                    if value in ("|", ">", "|+", "|-", ">+", ">-"):
                         # Block scalar — collect continuation lines
                         block_scalar = True
                         block_indent = None  # will be set on first content line

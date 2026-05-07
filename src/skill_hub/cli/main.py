@@ -77,7 +77,7 @@ async def cmd_sync(args):
 
     sources = load_registries(args.config, cache_dir=cache_dir, token=token)
     syncer = SkillSyncer(sources, index_path=args.index)
-    index = await syncer.sync_all()
+    index = await syncer.sync_all(force=args.force)
     print()
     print(index.summary())
 
@@ -153,7 +153,8 @@ def main():
     p_sync = sub.add_parser("sync", help="Sync skills from all registries")
     p_sync.add_argument("--cache-dir", default=default_cache,
                         help="Directory to cache SKILL.md content locally")
-
+    p_sync.add_argument("--force", action="store_true",
+                        help="Re-process all skills (ignore existing index)")
     s_search = sub.add_parser("search", help="Search skills")
     s_search.add_argument("query", help="Search query")
     s_search.add_argument("--top-k", type=int, default=5)
