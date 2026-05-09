@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import re
+import tarfile
 from pathlib import Path
 
 import httpx
@@ -30,7 +32,7 @@ class GitHubSource(SkillSource):
         )
 
     def _local_cache_path(self, repo_path: str) -> Path | None:
-        """Return the local cache path for a skill's SKILL.md."""
+        """Return the local cache path for a file in the repo."""
         if not self.cache_dir:
             return None
         # e.g. skills_local/garrytan--gstack/browse/SKILL.md
@@ -56,36 +58,128 @@ class GitHubSource(SkillSource):
         )
         tree = tree_resp.json().get("tree", [])
 
-        # Filter by glob pattern
+        # Filter by glob pattern and group files by skill directory
         pattern_parts = self.skill_glob.replace("*/", "").replace("SKILL.md", "")
-        skills = []
-        skipped = 0
+
+        # First pass: find all skill directories (dirs containing SKILL.md)
+        skill_dirs = set()
         for item in tree:
-            if item["path"].endswith("/SKILL.md"):
-                skill_dir = item["path"].rsplit("/SKILL.md", 1)[0]
-                # Check if it matches the glob prefix
+            path = item["path"]
+            if path.endswith("/SKILL.md"):
+                skill_dir = path.rsplit("/SKILL.md", 1)[0]
                 if self.skill_glob.startswith("*/") or self.skill_glob.startswith("**/") or \
                    skill_dir.startswith(pattern_parts.rstrip("/")):
-                    name = skill_dir.split("/")[-1]
-                    if name in skip:
-                        skipped += 1
-                        continue
-                    skills.append(SkillMeta(
-                        name=name,
-                        registry=self.name,
-                        source_url=f"https://github.com/{self.repo}/blob/{branch}/{item['path']}",
-                        local_path=None,
-                        repo_path=item["path"],
-                    ))
+                    skill_dirs.add(skill_dir)
+
+        # Second pass: group all files by their skill directory
+        # e.g. "browse/SKILL.md", "browse/scripts/test.sh", "browse/bin/run.sh"
+        # all belong to "browse"
+        dir_files: dict[str, list[dict]] = {}
+        for item in tree:
+            if item["type"] != "blob":
+                continue
+            path = item["path"]
+            # Find the longest matching skill directory prefix
+            for sd in skill_dirs:
+                if path.startswith(sd + "/"):
+                    dir_files.setdefault(sd, []).append(item)
+                    break
+
+        skills = []
+        skipped = 0
+        for skill_dir, files in dir_files.items():
+            # Check if it matches the glob prefix
+            if not (self.skill_glob.startswith("*/") or self.skill_glob.startswith("**/") or \
+                    skill_dir.startswith(pattern_parts.rstrip("/"))):
+                continue
+
+            name = skill_dir.split("/")[-1]
+            if name in skip:
+                skipped += 1
+                continue
+
+            skill_md_path = f"{skill_dir}/SKILL.md"
+            skills.append(SkillMeta(
+                name=name,
+                registry=self.name,
+                source_url=f"https://github.com/{self.repo}/blob/{branch}/{skill_md_path}",
+                local_path=None,
+                repo_path=skill_md_path,
+            ))
 
         if skipped:
             print(f"    [{self.name}] skipped {skipped} cached skills (API fetch avoided)")
 
-        # Enrich with metadata by fetching each SKILL.md
+        # Enrich with metadata and cache entire skill directories
+        # Download repo tarball (1 API call) to avoid per-file rate limits
+        if skills and self.cache_dir:
+            try:
+                tarball_resp = await self._client.get(
+                    f"/repos/{self.repo}/tarball/{branch}",
+                    follow_redirects=True,
+                )
+                tarball_resp.raise_for_status()
+
+                # Parse tarball and extract skill files
+                tar = tarfile.open(fileobj=io.BytesIO(tarball_resp.content), mode="r:gz")
+                # tarball root is "owner-repo-commitsha/"
+                root_prefix = tar.getnames()[0].split("/")[0] + "/"
+
+                # Build a map of repo_path -> tarball member
+                skill_dir_set = set()
+                for skill in skills:
+                    sd = skill.repo_path.rsplit("/SKILL.md", 1)[0]
+                    skill_dir_set.add(sd)
+
+                for member in tar.getmembers():
+                    if not member.isfile():
+                        continue
+                    # Strip the tarball root prefix to get repo-relative path
+                    repo_path = member.name
+                    if repo_path.startswith(root_prefix):
+                        repo_path = repo_path[len(root_prefix):]
+
+                    # Check if this file belongs to any skill directory
+                    for sd in skill_dir_set:
+                        if repo_path.startswith(sd + "/"):
+                            local_path = self._local_cache_path(repo_path)
+                            if local_path:
+                                local_path.parent.mkdir(parents=True, exist_ok=True)
+                                f = tar.extractfile(member)
+                                if f:
+                                    data = f.read()
+                                    # Try text, fallback to binary
+                                    try:
+                                        local_path.write_text(data.decode("utf-8"), encoding="utf-8")
+                                    except UnicodeDecodeError:
+                                        local_path.write_bytes(data)
+                            break
+
+                tar.close()
+                print(f"    [{self.name}] tarball extracted ({len(skills)} skill dirs)")
+
+            except Exception as e:
+                print(f"    [{self.name}] WARN: tarball download failed: {type(e).__name__}: {e}")
+                print(f"    [{self.name}] falling back to per-file download")
+
+        # Parse metadata from cached SKILL.md files
         for skill in skills:
             try:
-                content = await self.fetch_skill(skill)
-                meta = _parse_skill_md(content)
+                skill_dir = skill.repo_path.rsplit("/SKILL.md", 1)[0]
+                all_files = dir_files.get(skill_dir, [])
+
+                # Read SKILL.md from cache or fetch
+                cache_path = self._local_cache_path(skill.repo_path)
+                skill_content = None
+                if cache_path and cache_path.exists():
+                    skill_content = cache_path.read_text(encoding="utf-8")
+                else:
+                    skill_content = await self.fetch_skill(skill)
+                    if cache_path:
+                        cache_path.parent.mkdir(parents=True, exist_ok=True)
+                        cache_path.write_text(skill_content, encoding="utf-8")
+
+                meta = _parse_skill_md(skill_content)
                 skill.description = meta["description"]
                 skill.use_when = meta["use_when"]
                 skill.tags = meta["tags"]
@@ -98,15 +192,13 @@ class GitHubSource(SkillSource):
                 skill.input_types = meta["input_types"]
                 skill.domain = meta["domain"]
 
-                # Build decision card from the content we already have
-                skill.build_decision_card(content)
+                skill.build_decision_card(skill_content)
 
-                # Save to local cache
-                cache_path = self._local_cache_path(skill.repo_path)
                 if cache_path:
-                    cache_path.parent.mkdir(parents=True, exist_ok=True)
-                    cache_path.write_text(content, encoding="utf-8")
                     skill.local_path = str(cache_path.parent)
+
+                print(f"    [{self.name}] cached {skill.name}/ ({len(all_files)} files)")
+
             except Exception as e:
                 print(f"    [{self.name}] WARN: failed to fetch {skill.name}: {type(e).__name__}: {e}")
 

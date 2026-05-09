@@ -11,7 +11,8 @@ Agent System Prompt (~5KB index, 250+ skills)
   │
   ├── search("plot") → 3 candidates found
   │
-  └── load_skill("raincloud-plot") → full SKILL.md loaded on demand
+  └── load_skill("raincloud-plot") → full skill directory loaded on demand
+                                      (SKILL.md + references/ + scripts/ + ...)
 ```
 
 ## Quick Start
@@ -51,7 +52,7 @@ python -m skill_hub.cli.main prompt
 │              │                                              │
 │              ▼ sync                                         │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  skills_local/          (cached SKILL.md files)       │  │
+│  │  skills_local/          (full skill directories)       │  │
 │  │  skill_index.json       (compact searchable index)    │  │
 │  └──────────────────────────────────────────────────────┘  │
 │              │                                              │
@@ -60,7 +61,7 @@ python -m skill_hub.cli.main prompt
 │  │  MCP Server (4 tools exposed to agent)                │  │
 │  │  ├── search_skills(query)    — keyword search         │  │
 │  │  ├── suggest_skills(task)    — semantic routing       │  │
-│  │  ├── load_skill(name)        — full SKILL.md content  │  │
+│  │  ├── load_skill(name)        — full skill content      │  │
 │  │  └── list_skill_categories() — compact overview       │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
@@ -72,7 +73,7 @@ python -m skill_hub.cli.main prompt
 |---------|-------------|
 | `sync` | Discover + index skills from all sources (incremental by default) |
 | `sync --force` | Full rebuild — re-process all skills |
-| `sync --cache-dir skills_local` | Also download full SKILL.md files locally |
+| `sync --cache-dir skills_local` | Also download full skill directories locally (SKILL.md + references/ + scripts/) |
 | `search <query>` | Search the index by keyword |
 | `load <name>` | Print full SKILL.md content for a skill |
 | `info` | Show index stats |
@@ -184,7 +185,7 @@ skill-hub/
 │   └── cli/
 │       └── main.py              # CLI entry point
 ├── skill_index.json             # Generated index (gitignored)
-├── skills_local/                # Cached SKILL.md files (gitignored)
+├── skills_local/                # Cached skill directories (gitignored)
 └── tests/
 ```
 
