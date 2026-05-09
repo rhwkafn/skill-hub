@@ -339,7 +339,7 @@ def _infer_phase(content: str, description: str):
     best_phase = SkillPhase.EXECUTE
     best_hits = 0
     for phase, patterns in phase_patterns.items():
-        hits = sum(1 for p in patterns if p in text)
+        hits = sum(1 for p in patterns if (_has_word(text, p) if " " not in p else p in text))
         if hits > best_hits:
             best_hits = hits
             best_phase = phase
@@ -358,6 +358,12 @@ def _infer_execution_mode(content: str, description: str):
         return ExecutionMode.PARALLEL
 
     return ExecutionMode.INDEPENDENT
+
+
+def _has_word(text: str, word: str) -> bool:
+    """Check if word exists as a whole word in text (not substring)."""
+    import re
+    return bool(re.search(r'\b' + re.escape(word) + r'\b', text))
 
 
 def _extract_capabilities(content: str, description: str) -> tuple[list[str], list[str], str]:
@@ -384,7 +390,7 @@ def _extract_capabilities(content: str, description: str) -> tuple[list[str], li
 
     output_formats = []
     for fmt, patterns in format_patterns.items():
-        if any(p in text for p in patterns):
+        if any((_has_word(text, p) if " " not in p else p in text) for p in patterns):
             output_formats.append(fmt)
 
     # Input types
@@ -399,10 +405,11 @@ def _extract_capabilities(content: str, description: str) -> tuple[list[str], li
 
     input_types = []
     for itype, patterns in input_patterns.items():
-        if any(p in text for p in patterns):
+        if any((_has_word(text, p) if " " not in p else p in text) for p in patterns):
             input_types.append(itype)
 
-    # Domain
+    # Domain — use word boundary matching for single words to avoid
+    # false positives like "generate" matching "gene" + "rna"
     domain = ""
     domain_patterns = {
         "science": ["research", "scientific", "journal", "paper", "publication", "hypothesis", "experiment"],
@@ -411,10 +418,11 @@ def _extract_capabilities(content: str, description: str) -> tuple[list[str], li
         "data-science": ["machine learning", "neural", "model training", "dataset", "pandas", "sklearn"],
         "engineering": ["deploy", "ci/cd", "testing", "refactor", "code review", "api"],
         "writing": ["writing", "manuscript", "polish", "abstract", "bibliography", "citation"],
+        "marketing": ["marketing", "seo", "ad copy", "landing page", "conversion", "campaign"],
     }
 
     for dom, patterns in domain_patterns.items():
-        hits = sum(1 for p in patterns if p in text)
+        hits = sum(1 for p in patterns if (_has_word(text, p) if " " not in p else p in text))
         if hits >= 2:
             domain = dom
             break
