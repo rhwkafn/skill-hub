@@ -13,6 +13,24 @@ class SkillMode(Enum):
     COMPOSE = "compose"     # Can combine with other skills (e.g. code-review + security)
 
 
+class SkillPhase(Enum):
+    """Which phase of a workflow this skill belongs to."""
+    DEFINE = "define"       # Requirements, specs, brainstorming
+    PLAN = "plan"           # Planning, task breakdown
+    BUILD = "build"         # Implementation, coding, writing
+    VERIFY = "verify"       # Testing, debugging, QA
+    REVIEW = "review"       # Code review, quality, security audit
+    SHIP = "ship"           # Deployment, documentation, release
+    EXECUTE = "execute"     # Generic execution (phase-agnostic)
+
+
+class ExecutionMode(Enum):
+    """How this skill should be executed relative to other tasks."""
+    SERIAL = "serial"           # Must run in order, depends on previous steps
+    PARALLEL = "parallel"       # Can run concurrently with other tasks
+    INDEPENDENT = "independent" # Standalone, no relationship to other tasks
+
+
 @dataclass
 class SkillMeta:
     """Lightweight metadata — this is what gets indexed and stored in the hub."""
@@ -35,6 +53,9 @@ class SkillMeta:
     output_formats: list[str] = field(default_factory=list)  # e.g. ["pptx", "html", "pdf"]
     input_types: list[str] = field(default_factory=list)     # e.g. ["paper", "data", "code"]
     domain: str = ""                                          # e.g. "science", "engineering", "writing"
+    # Workflow integration
+    phase: SkillPhase = SkillPhase.EXECUTE                     # which workflow phase this skill serves
+    execution_mode: ExecutionMode = ExecutionMode.INDEPENDENT  # how to run relative to other tasks
 
     def to_index_entry(self) -> dict:
         """Minimal dict for the searchable index."""
@@ -46,6 +67,7 @@ class SkillMeta:
             "tags": self.tags,
             "use_when": self.use_when,
             "source_url": self.source_url,
+            "local_path": self.local_path,
             "repo_path": self.repo_path,
             "mode": self.mode.value,
             "tools_required": self.tools_required,
@@ -55,6 +77,8 @@ class SkillMeta:
             "output_formats": self.output_formats,
             "input_types": self.input_types,
             "domain": self.domain,
+            "phase": self.phase.value,
+            "execution_mode": self.execution_mode.value,
         }
 
     def build_decision_card(self, content_head: str = "") -> str:
@@ -65,14 +89,15 @@ class SkillMeta:
         """
         parts = []
 
-        # Header: [name] mode=X hooks=true
+        # Header: [name] mode=X phase=Y hooks=true
         flags = []
         if self.has_hooks:
             flags.append("hooks=true")
         if self.tools_required:
             flags.append(f"needs={','.join(self.tools_required[:3])}")
         flag_str = f" {' '.join(flags)}" if flags else ""
-        parts.append(f"[{self.name}] mode={self.mode.value}{flag_str}")
+        phase_str = f" phase={self.phase.value}" if self.phase != SkillPhase.EXECUTE else ""
+        parts.append(f"[{self.name}] mode={self.mode.value}{phase_str}{flag_str}")
 
         # When: triggers or use_when
         when_parts = self.triggers[:3] if self.triggers else []

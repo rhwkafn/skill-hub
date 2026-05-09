@@ -40,7 +40,7 @@ def _project_root() -> Path:
 def load_registries(config_path: str, cache_dir: str | None = None,
                     token: str | None = None) -> list:
     """Load registry configs from YAML."""
-    with open(config_path, encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8-sig") as f:
         config = yaml.safe_load(f)
 
     sources = []

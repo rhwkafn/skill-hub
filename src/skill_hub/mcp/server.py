@@ -226,7 +226,117 @@ def create_server(
             "apply_hint": skill.apply_hint(),
         }, indent=2, ensure_ascii=False)
 
+    @mcp.tool()
+    def plan_with_skills(plan_text: str, top_k_per_task: int = 3) -> str:
+        """Match a plan's sub-tasks to relevant skills.
+
+        Takes a plan document (markdown) and returns skill recommendations
+        for each sub-task. Use after writing-plans to enrich a plan with
+        skill-hub capabilities.
+
+        Args:
+            plan_text: Full plan text in markdown format.
+            top_k_per_task: Max skills to recommend per sub-task (default 3).
+
+        Returns:
+            JSON with each sub-task and its recommended skills (name, path, phase).
+        """
+        import re
+
+        tasks = _parse_plan_tasks(plan_text)
+        if not tasks:
+            # Fallback: treat entire text as one task
+            tasks = [{"id": 1, "title": "Main task", "text": plan_text[:500]}]
+
+        results = []
+        for task in tasks:
+            query = task["text"][:300]
+            route_output = router.route(query, all_skills, top_k=top_k_per_task * 2)
+
+            # Filter by phase if task has phase indicators
+            candidates = [r.skill for r in route_output.candidates]
+
+            # Pick top_k
+            selected = candidates[:top_k_per_task]
+
+            results.append({
+                "task_id": task["id"],
+                "task_title": task["title"],
+                "recommended_skills": [
+                    {
+                        "name": s.name,
+                        "phase": s.phase.value,
+                        "execution_mode": s.execution_mode.value,
+                        "local_path": s.local_path,
+                        "description": s.description[:120],
+                        "use_when": s.use_when[:80] if s.use_when else "",
+                    }
+                    for s in selected
+                ],
+            })
+
+        return json.dumps(results, indent=2, ensure_ascii=False)
+
     return mcp
+
+
+def _parse_plan_tasks(plan_text: str) -> list[dict]:
+    """Extract sub-tasks from a plan document. Multi-level fallback.
+
+    Tries in order:
+    1. ### Task N: headers (superpowers format)
+    2. ## or ### headings
+    3. - [ ] checkboxes
+    4. Numbered list items (1. 2. 3.)
+    """
+    import re
+    tasks = []
+
+    # Strategy 1: ### Task N: (superpowers writing-plans format)
+    blocks = re.split(r"(?=^### Task\s+\d+)", plan_text, flags=re.MULTILINE)
+    if len(blocks) > 1:
+        for block in blocks:
+            m = re.match(r"^### Task\s+(\d+):\s*(.+)", block.strip())
+            if m:
+                task_id = int(m.group(1))
+                title = m.group(2).strip()
+                text = block.strip()
+                tasks.append({"id": task_id, "title": title, "text": text})
+        if tasks:
+            return tasks
+
+    # Strategy 2: Any ### or ## headings
+    blocks = re.split(r"(?=^#{2,3}\s+)", plan_text, flags=re.MULTILINE)
+    if len(blocks) > 1:
+        for i, block in enumerate(blocks, 1):
+            m = re.match(r"^#{2,3}\s+(.+)", block.strip())
+            if m:
+                title = m.group(1).strip()
+                tasks.append({"id": i, "title": title, "text": block.strip()})
+        if tasks:
+            return tasks
+
+    # Strategy 3: Checkboxes - [ ]
+    lines = plan_text.split("\n")
+    task_id = 0
+    for line in lines:
+        m = re.match(r"^\s*-\s*\[.\]\s*(.+)", line)
+        if m:
+            task_id += 1
+            title = m.group(1).strip().strip("*")
+            tasks.append({"id": task_id, "title": title, "text": title})
+    if tasks:
+        return tasks
+
+    # Strategy 4: Numbered list
+    for line in lines:
+        m = re.match(r"^\s*\d+\.\s+(.+)", line)
+        if m:
+            task_id += 1
+            title = m.group(1).strip()
+            tasks.append({"id": task_id, "title": title, "text": title})
+
+    return tasks
 
 
 def main():

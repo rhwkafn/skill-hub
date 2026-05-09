@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .base import SkillSource
+from .github_source import _infer_execution_mode, _infer_phase
 from ..models import SkillMeta
 
 
@@ -44,6 +45,8 @@ class LocalSource(SkillSource):
                 use_when=use_when,
                 source_url=str(skill_file),
                 local_path=str(skill_dir),
+                phase=_infer_phase(content, description),
+                execution_mode=_infer_execution_mode(content, description),
             )
             skill.build_decision_card(content)
             skills.append(skill)

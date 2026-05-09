@@ -69,6 +69,7 @@ class SkillIndex:
         for entry in data:
             # Handle missing fields for backwards compatibility
             entry.setdefault("source_url", "")
+            entry.setdefault("local_path", None)
             entry.setdefault("repo_path", "")
             entry.setdefault("mode", "on_demand")
             entry.setdefault("tools_required", [])
@@ -78,9 +79,13 @@ class SkillIndex:
             entry.setdefault("output_formats", [])
             entry.setdefault("input_types", [])
             entry.setdefault("domain", "")
-            # Convert mode string to enum
-            from ..models import SkillMode
+            entry.setdefault("phase", "execute")
+            entry.setdefault("execution_mode", "independent")
+            # Convert string enums
+            from ..models import SkillMode, SkillPhase, ExecutionMode
             entry["mode"] = SkillMode(entry["mode"])
+            entry["phase"] = SkillPhase(entry["phase"])
+            entry["execution_mode"] = ExecutionMode(entry["execution_mode"])
             idx.add(SkillMeta(**entry))
         return idx
 

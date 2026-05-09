@@ -1,183 +1,119 @@
-"""GitHub-based skill source — discovers and fetches skills from a repo."""
+"""GitHub-based skill source — discovers and fetches skills via git clone."""
 
 from __future__ import annotations
 
-import io
+import asyncio
 import re
-import tarfile
 from pathlib import Path
-
-import httpx
 
 from .base import SkillSource
 from ..models import SkillMeta
 
-GITHUB_API = "https://api.github.com"
-
 
 class GitHubSource(SkillSource):
-    """Pull skills from a GitHub repository."""
+    """Pull skills from a GitHub repository using shallow git clone.
+
+    No GitHub API calls — avoids rate limits entirely.
+    Clones (or pulls) the repo locally, then globs for SKILL.md files.
+    """
 
     def __init__(self, repo: str, skill_glob: str = "*/SKILL.md",
                  token: str | None = None, cache_dir: str | None = None):
         self.name = repo
         self.repo = repo
         self.skill_glob = skill_glob
-        self.cache_dir = Path(cache_dir) if cache_dir else None
-        headers = {"Accept": "application/vnd.github.v3+json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        self._client = httpx.AsyncClient(
-            base_url=GITHUB_API, headers=headers, timeout=30,
-        )
+        self._token = token  # unused, kept for config compat
+        # Clone target: skills_local/owner--repo/
+        safe_repo = repo.replace("/", "--")
+        if cache_dir:
+            self._clone_dir = Path(cache_dir) / safe_repo
+        else:
+            self._clone_dir = Path("skills_local") / safe_repo
 
-    def _local_cache_path(self, repo_path: str) -> Path | None:
-        """Return the local cache path for a file in the repo."""
-        if not self.cache_dir:
-            return None
-        # e.g. skills_local/garrytan--gstack/browse/SKILL.md
-        safe_repo = self.repo.replace("/", "--")
-        return self.cache_dir / safe_repo / repo_path
+    async def _run_git(self, *args: str) -> None:
+        """Run a git command, raise on failure."""
+        proc = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"git failed ({proc.returncode}): {stderr.decode().strip()}")
+
+    async def _clone_or_pull(self) -> None:
+        """Shallow clone if missing, otherwise fast-forward pull."""
+        if (self._clone_dir / ".git").exists():
+            try:
+                await self._run_git(
+                    "git", "-C", str(self._clone_dir),
+                    "pull", "--ff-only", "--depth", "1",
+                )
+            except RuntimeError:
+                # Diverged (e.g. remote force-pushed) — hard-reset to origin
+                await self._run_git(
+                    "git", "-C", str(self._clone_dir),
+                    "fetch", "--depth", "1", "origin", "main",
+                )
+                await self._run_git(
+                    "git", "-C", str(self._clone_dir),
+                    "reset", "--hard", "origin/main",
+                )
+        else:
+            # Remove stale non-git directory (e.g. from old tarball cache)
+            if self._clone_dir.exists():
+                import shutil
+                shutil.rmtree(self._clone_dir)
+            self._clone_dir.parent.mkdir(parents=True, exist_ok=True)
+            url = f"https://github.com/{self.repo}.git"
+            await self._run_git("git", "clone", "--depth", "1", url, str(self._clone_dir))
+
+    def _find_skill_mds(self) -> list[Path]:
+        """Glob for SKILL.md files matching the configured pattern."""
+        results = sorted(self._clone_dir.glob(self.skill_glob))
+        if not results:
+            # Fallback: try **/SKILL.md if the configured glob misses
+            results = sorted(self._clone_dir.glob("**/SKILL.md"))
+        return results
 
     async def list_skills(self, skip_names: set[str] | None = None) -> list[SkillMeta]:
-        """Walk the repo tree to find SKILL.md files matching the glob pattern.
+        """Clone/pull the repo and discover SKILL.md files.
 
         Args:
             skip_names: Set of skill names to skip (already in index).
-                        Skips the expensive GitHub API fetch for these skills.
+                        Skipped skills still exist on disk but are not returned.
         """
         skip = skip_names or set()
+        await self._clone_or_pull()
 
-        # Get default branch
-        repo_info = (await self._client.get(f"/repos/{self.repo}")).json()
-        branch = repo_info.get("default_branch", "main")
-
-        # Get full tree
-        tree_resp = await self._client.get(
-            f"/repos/{self.repo}/git/trees/{branch}", params={"recursive": "1"},
-        )
-        tree = tree_resp.json().get("tree", [])
-
-        # Filter by glob pattern and group files by skill directory
-        pattern_parts = self.skill_glob.replace("*/", "").replace("SKILL.md", "")
-
-        # First pass: find all skill directories (dirs containing SKILL.md)
-        skill_dirs = set()
-        for item in tree:
-            path = item["path"]
-            if path.endswith("/SKILL.md"):
-                skill_dir = path.rsplit("/SKILL.md", 1)[0]
-                if self.skill_glob.startswith("*/") or self.skill_glob.startswith("**/") or \
-                   skill_dir.startswith(pattern_parts.rstrip("/")):
-                    skill_dirs.add(skill_dir)
-
-        # Second pass: group all files by their skill directory
-        # e.g. "browse/SKILL.md", "browse/scripts/test.sh", "browse/bin/run.sh"
-        # all belong to "browse"
-        dir_files: dict[str, list[dict]] = {}
-        for item in tree:
-            if item["type"] != "blob":
-                continue
-            path = item["path"]
-            # Find the longest matching skill directory prefix
-            for sd in skill_dirs:
-                if path.startswith(sd + "/"):
-                    dir_files.setdefault(sd, []).append(item)
-                    break
-
+        skill_mds = self._find_skill_mds()
         skills = []
         skipped = 0
-        for skill_dir, files in dir_files.items():
-            # Check if it matches the glob prefix
-            if not (self.skill_glob.startswith("*/") or self.skill_glob.startswith("**/") or \
-                    skill_dir.startswith(pattern_parts.rstrip("/"))):
-                continue
 
-            name = skill_dir.split("/")[-1]
+        for smd in skill_mds:
+            # Derive skill name from parent directory
+            skill_dir = smd.parent
+            name = skill_dir.name
             if name in skip:
                 skipped += 1
                 continue
 
-            skill_md_path = f"{skill_dir}/SKILL.md"
+            rel_path = smd.relative_to(self._clone_dir)
             skills.append(SkillMeta(
                 name=name,
                 registry=self.name,
-                source_url=f"https://github.com/{self.repo}/blob/{branch}/{skill_md_path}",
-                local_path=None,
-                repo_path=skill_md_path,
+                source_url=f"https://github.com/{self.repo}/blob/main/{rel_path}",
+                local_path=str(skill_dir),
+                repo_path=str(rel_path),
             ))
 
         if skipped:
-            print(f"    [{self.name}] skipped {skipped} cached skills (API fetch avoided)")
+            print(f"    [{self.name}] skipped {skipped} cached skills")
 
-        # Enrich with metadata and cache entire skill directories
-        # Download repo tarball (1 API call) to avoid per-file rate limits
-        if skills and self.cache_dir:
-            try:
-                tarball_resp = await self._client.get(
-                    f"/repos/{self.repo}/tarball/{branch}",
-                    follow_redirects=True,
-                )
-                tarball_resp.raise_for_status()
-
-                # Parse tarball and extract skill files
-                tar = tarfile.open(fileobj=io.BytesIO(tarball_resp.content), mode="r:gz")
-                # tarball root is "owner-repo-commitsha/"
-                root_prefix = tar.getnames()[0].split("/")[0] + "/"
-
-                # Build a map of repo_path -> tarball member
-                skill_dir_set = set()
-                for skill in skills:
-                    sd = skill.repo_path.rsplit("/SKILL.md", 1)[0]
-                    skill_dir_set.add(sd)
-
-                for member in tar.getmembers():
-                    if not member.isfile():
-                        continue
-                    # Strip the tarball root prefix to get repo-relative path
-                    repo_path = member.name
-                    if repo_path.startswith(root_prefix):
-                        repo_path = repo_path[len(root_prefix):]
-
-                    # Check if this file belongs to any skill directory
-                    for sd in skill_dir_set:
-                        if repo_path.startswith(sd + "/"):
-                            local_path = self._local_cache_path(repo_path)
-                            if local_path:
-                                local_path.parent.mkdir(parents=True, exist_ok=True)
-                                f = tar.extractfile(member)
-                                if f:
-                                    data = f.read()
-                                    # Try text, fallback to binary
-                                    try:
-                                        local_path.write_text(data.decode("utf-8"), encoding="utf-8")
-                                    except UnicodeDecodeError:
-                                        local_path.write_bytes(data)
-                            break
-
-                tar.close()
-                print(f"    [{self.name}] tarball extracted ({len(skills)} skill dirs)")
-
-            except Exception as e:
-                print(f"    [{self.name}] WARN: tarball download failed: {type(e).__name__}: {e}")
-                print(f"    [{self.name}] falling back to per-file download")
-
-        # Parse metadata from cached SKILL.md files
+        # Parse metadata from local SKILL.md files
         for skill in skills:
             try:
-                skill_dir = skill.repo_path.rsplit("/SKILL.md", 1)[0]
-                all_files = dir_files.get(skill_dir, [])
-
-                # Read SKILL.md from cache or fetch
-                cache_path = self._local_cache_path(skill.repo_path)
-                skill_content = None
-                if cache_path and cache_path.exists():
-                    skill_content = cache_path.read_text(encoding="utf-8")
-                else:
-                    skill_content = await self.fetch_skill(skill)
-                    if cache_path:
-                        cache_path.parent.mkdir(parents=True, exist_ok=True)
-                        cache_path.write_text(skill_content, encoding="utf-8")
+                skill_dir = Path(skill.local_path)
+                smd = skill_dir / "SKILL.md"
+                skill_content = smd.read_text(encoding="utf-8")
 
                 meta = _parse_skill_md(skill_content)
                 skill.description = meta["description"]
@@ -191,41 +127,27 @@ class GitHubSource(SkillSource):
                 skill.output_formats = meta["output_formats"]
                 skill.input_types = meta["input_types"]
                 skill.domain = meta["domain"]
+                skill.phase = meta["phase"]
+                skill.execution_mode = meta["execution_mode"]
 
                 skill.build_decision_card(skill_content)
 
-                if cache_path:
-                    skill.local_path = str(cache_path.parent)
-
-                print(f"    [{self.name}] cached {skill.name}/ ({len(all_files)} files)")
+                file_count = sum(1 for _ in skill_dir.rglob("*") if _.is_file())
+                print(f"    [{self.name}] {skill.name}/ ({file_count} files)")
 
             except Exception as e:
-                print(f"    [{self.name}] WARN: failed to fetch {skill.name}: {type(e).__name__}: {e}")
+                print(f"    [{self.name}] WARN: failed to parse {skill.name}: {type(e).__name__}: {e}")
 
         return skills
 
     async def fetch_skill(self, skill: SkillMeta) -> str:
-        """Fetch SKILL.md content via GitHub API."""
-        # Find the SKILL.md path from source_url
-        path = skill.source_url.split(f"/blob/")[-1] if "/blob/" in skill.source_url else ""
-        if not path:
-            branch = "main"
-            path = f"{skill.name}/SKILL.md"
-        else:
-            parts = path.split("/", 1)
-            branch = parts[0]
-            path = parts[1] if len(parts) > 1 else path
-
-        resp = await self._client.get(
-            f"/repos/{self.repo}/contents/{path}",
-            params={"ref": branch},
-            headers={"Accept": "application/vnd.github.v3.raw"},
-        )
-        resp.raise_for_status()
-        return resp.text
+        """Read SKILL.md from the local clone."""
+        smd = Path(skill.local_path) / "SKILL.md"
+        return smd.read_text(encoding="utf-8")
 
     async def close(self):
-        await self._client.aclose()
+        """No-op — no persistent connections."""
+        pass
 
 
 def _parse_skill_md(content: str) -> dict:
@@ -234,7 +156,7 @@ def _parse_skill_md(content: str) -> dict:
     Returns a dict with keys: description, use_when, tags, category,
     mode, tools_required, has_hooks, triggers.
     """
-    from ..models import SkillMode
+    from ..models import ExecutionMode, SkillMode, SkillPhase
 
     # Strip BOM if present
     if content.startswith("\ufeff"):
@@ -376,6 +298,12 @@ def _parse_skill_md(content: str) -> dict:
     # Extract capabilities from content
     output_formats, input_types, domain = _extract_capabilities(content, description)
 
+    # Infer phase from content + metadata
+    phase = _infer_phase(content, description)
+
+    # Infer execution mode
+    execution_mode = _infer_execution_mode(content, description)
+
     return {
         "description": description,
         "use_when": use_when,
@@ -388,7 +316,48 @@ def _parse_skill_md(content: str) -> dict:
         "output_formats": output_formats,
         "input_types": input_types,
         "domain": domain,
+        "phase": phase,
+        "execution_mode": execution_mode,
     }
+
+
+def _infer_phase(content: str, description: str):
+    """Infer which workflow phase a skill belongs to from its content."""
+    from ..models import SkillPhase
+    text = (content + " " + description).lower()
+
+    # Order matters: more specific patterns first
+    phase_patterns = {
+        SkillPhase.DEFINE: ["spec", "requirement", "brainstorm", "ideation", "brief"],
+        SkillPhase.PLAN: ["plan", "task breakdown", "architecture", "roadmap", "estimat"],
+        SkillPhase.BUILD: ["implement", "creat", "writ", "develop", "build", "generat", "produc", "cod"],
+        SkillPhase.VERIFY: ["test", "debug", "qa", "verif", "validat", "inspect", "diagnos"],
+        SkillPhase.REVIEW: ["code review", "security audit", "quality", "refactor", "simplif", "hardening"],
+        SkillPhase.SHIP: ["deploy", "release", "ci/cd", "cicd", "documentation", "adr", "git workflow", "launch", "migrat"],
+    }
+
+    best_phase = SkillPhase.EXECUTE
+    best_hits = 0
+    for phase, patterns in phase_patterns.items():
+        hits = sum(1 for p in patterns if p in text)
+        if hits > best_hits:
+            best_hits = hits
+            best_phase = phase
+
+    return best_phase
+
+
+def _infer_execution_mode(content: str, description: str):
+    """Infer execution mode from content."""
+    from ..models import ExecutionMode
+    text = (content + " " + description).lower()
+
+    if any(kw in text for kw in ["step-by-step", "sequential", "serial", "in order", "first.*then"]):
+        return ExecutionMode.SERIAL
+    if any(kw in text for kw in ["parallel", "concurrent", "independent", "simultaneous"]):
+        return ExecutionMode.PARALLEL
+
+    return ExecutionMode.INDEPENDENT
 
 
 def _extract_capabilities(content: str, description: str) -> tuple[list[str], list[str], str]:
