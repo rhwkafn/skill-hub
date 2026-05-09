@@ -31,6 +31,8 @@ for d in data:
         "description": (d.get("description", "") or "")[:200],
         "mode": d.get("mode", "on_demand"),
         "domain": d.get("domain", "") or "none",
+        "phase": d.get("phase", "execute") or "execute",
+        "execution_mode": d.get("execution_mode", "independent") or "independent",
         "output_formats": d.get("output_formats", []),
         "triggers": d.get("triggers", []),
     })
@@ -86,6 +88,11 @@ CSS = """
   .skill-tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .skill-tag { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:rgba(0,206,201,0.1); color:var(--accent2); }
   .skill-domain { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:rgba(253,203,110,0.1); color:var(--accent4); }
+  .skill-phase { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:rgba(108,92,231,0.1); color:var(--accent); }
+  .skill-exec { font-size:0.7rem; padding:2px 8px; border-radius:6px; }
+  .exec-serial { background:rgba(0,206,201,0.1); color:var(--accent2); }
+  .exec-parallel { background:rgba(85,239,196,0.1); color:var(--accent5); }
+  .exec-independent { background:rgba(136,136,160,0.1); color:var(--text-dim); }
   .count-badge { font-size:0.75rem; color:var(--text-dim); margin-left:auto; font-weight:400; }
   .footer { text-align:center; padding:40px; color:var(--text-dim); font-size:0.8rem; border-top:1px solid var(--border); margin-top:40px; }
   .footer a { color:var(--accent); text-decoration:none; }
@@ -98,13 +105,17 @@ CSS = """
 """
 
 # ─── JS (shared logic, parameterized) ───
-def make_js(js_data, domain_map, mode_map, labels):
+def make_js(js_data, domain_map, mode_map, phase_map, exec_map, labels):
     domain_js = json.dumps(domain_map, ensure_ascii=False)
     mode_js = json.dumps(mode_map, ensure_ascii=False)
+    phase_js = json.dumps(phase_map, ensure_ascii=False)
+    exec_js = json.dumps(exec_map, ensure_ascii=False)
     return f"""
 const SKILLS = {js_data};
 const domainMap = {domain_js};
 const modeMap = {mode_js};
+const phaseMap = {phase_js};
+const execMap = {exec_js};
 const chartColors = ['#6c5ce7','#00cec9','#fd79a8','#fdcb6e','#55efc4','#a29bfe','#fab1a0','#81ecec','#ffeaa7','#dfe6e9','#636e72'];
 
 function makeChart(id, labels, data, type='doughnut') {{
@@ -129,6 +140,14 @@ SKILLS.forEach(s => (s.output_formats||[]).forEach(f => {{ fmtMap[f] = (fmtMap[f
 const fmtSorted = Object.entries(fmtMap).sort((a,b) => b[1]-a[1]);
 makeChart('chartFormat', fmtSorted.map(e=>e[0]), fmtSorted.map(e=>e[1]), 'bar');
 
+const phaseMap2 = {{}};
+SKILLS.forEach(s => {{ const p = phaseMap[s.phase]||s.phase; phaseMap2[p] = (phaseMap2[p]||0)+1; }});
+makeChart('chartPhase', Object.keys(phaseMap2), Object.values(phaseMap2));
+
+const execMap2 = {{}};
+SKILLS.forEach(s => {{ const e = execMap[s.execution_mode]||s.execution_mode; execMap2[e] = (execMap2[e]||0)+1; }});
+makeChart('chartExec', Object.keys(execMap2), Object.values(execMap2));
+
 // Filter & render
 const filterBar = document.getElementById('filterBar');
 const grid = document.getElementById('skillGrid');
@@ -138,6 +157,8 @@ const sortSelect = document.getElementById('sortSelect');
 const domains = [...new Set(SKILLS.map(s => s.domain||'none'))].sort();
 const sourceKeys = [...new Set(SKILLS.map(s => s.registry))].sort();
 const modeKeys = [...new Set(SKILLS.map(s => s.mode))].sort();
+const phaseKeys = [...new Set(SKILLS.map(s => s.phase||'execute'))].sort();
+const execKeys = [...new Set(SKILLS.map(s => s.execution_mode||'independent'))].sort();
 let activeFilter = {{ type:'domain', value:null }};
 let searchQuery = '';
 
@@ -157,6 +178,8 @@ function createFilterGroup(title, items, type) {{
       if (type==='domain') return (s.domain||'none')===item;
       if (type==='source') return s.registry===item;
       if (type==='mode') return s.mode===item;
+      if (type==='phase') return (s.phase||'execute')===item;
+      if (type==='exec') return (s.execution_mode||'independent')===item;
     }}).length;
     btn.className = 'filter-btn' + (activeFilter.type===type && activeFilter.value===item ? ' active' : '');
     btn.textContent = label + ' (' + count + ')';
@@ -172,6 +195,8 @@ function render() {{
       if (activeFilter.type==='domain') return (s.domain||'none')===activeFilter.value;
       if (activeFilter.type==='source') return s.registry===activeFilter.value;
       if (activeFilter.type==='mode') return s.mode===activeFilter.value;
+      if (activeFilter.type==='phase') return (s.phase||'execute')===activeFilter.value;
+      if (activeFilter.type==='exec') return (s.execution_mode||'independent')===activeFilter.value;
     }});
   }}
   if (searchQuery) {{
@@ -193,14 +218,21 @@ function render() {{
   createFilterGroup('{labels["domains"]}', domains, 'domain');
   createFilterGroup('{labels["sources"]}', sourceKeys, 'source');
   createFilterGroup('{labels["modes"]}', modeKeys, 'mode');
+  createFilterGroup('{labels["phases"]}', phaseKeys, 'phase');
+  createFilterGroup('{labels["execs"]}', execKeys, 'exec');
   grid.innerHTML = filtered.map(s => {{
     const modeClass = 'mode-' + s.mode;
     const modeLabel = modeMap[s.mode] || s.mode;
+    const phaseLabel = phaseMap[s.phase] || s.phase || '';
+    const execLabel = execMap[s.execution_mode] || s.execution_mode || '';
+    const execClass = 'exec-' + (s.execution_mode||'independent');
     const src = s.registry.split('/').pop();
     const tags = (s.output_formats||[]).slice(0,4).map(f => '<span class="skill-tag">' + f + '</span>').join('');
     const dTag = s.domain ? '<span class="skill-domain">' + (domainMap[s.domain]||s.domain) + '</span>' : '';
+    const pTag = phaseLabel ? '<span class="skill-phase">' + phaseLabel + '</span>' : '';
+    const eTag = execLabel ? '<span class="skill-exec ' + execClass + '">' + execLabel + '</span>' : '';
     const desc = (s.description||'').slice(0,150);
-    return '<div class="skill-card"><div class="skill-header"><span class="skill-name">' + s.name + '</span><span class="skill-mode ' + modeClass + '">' + modeLabel + '</span></div><div class="skill-source">' + src + '</div><div class="skill-desc">' + desc + '</div><div class="skill-tags">' + dTag + tags + '</div></div>';
+    return '<div class="skill-card"><div class="skill-header"><span class="skill-name">' + s.name + '</span><span class="skill-mode ' + modeClass + '">' + modeLabel + '</span></div><div class="skill-source">' + src + '</div><div class="skill-desc">' + desc + '</div><div class="skill-tags">' + dTag + pTag + eTag + tags + '</div></div>';
   }}).join('');
 }}
 
@@ -239,7 +271,12 @@ en_html = f"""<!DOCTYPE html>
   <div class="charts-row">
     <div class="chart-card"><h3>By Source</h3><div class="chart-container"><canvas id="chartSource"></canvas></div></div>
     <div class="chart-card"><h3>By Domain</h3><div class="chart-container"><canvas id="chartDomain"></canvas></div></div>
+    <div class="chart-card"><h3>By Phase</h3><div class="chart-container"><canvas id="chartPhase"></canvas></div></div>
+  </div>
+  <div class="charts-row">
     <div class="chart-card"><h3>By Output Format</h3><div class="chart-container"><canvas id="chartFormat"></canvas></div></div>
+    <div class="chart-card"><h3>By Execution Mode</h3><div class="chart-container"><canvas id="chartExec"></canvas></div></div>
+    <div class="chart-card"></div>
   </div>
   <div class="section">
     <div class="section-title">All Skills <span class="count-badge" id="skillCount"></span></div>
@@ -267,7 +304,13 @@ en_html = f"""<!DOCTYPE html>
 }, {
     "global": "global", "on_demand": "on-demand", "compose": "compose",
 }, {
+    "define": "Define", "plan": "Plan", "build": "Build",
+    "verify": "Verify", "review": "Review", "ship": "Ship", "execute": "Execute",
+}, {
+    "serial": "Serial", "parallel": "Parallel", "independent": "Independent",
+}, {
     "all": "All ", "domains": "Domains", "sources": "Sources", "modes": "Modes",
+    "phases": "Phases", "execs": "Exec Mode",
 })}
 </script>
 </body>
@@ -303,7 +346,12 @@ zh_html = f"""<!DOCTYPE html>
   <div class="charts-row">
     <div class="chart-card"><h3>按来源分布</h3><div class="chart-container"><canvas id="chartSource"></canvas></div></div>
     <div class="chart-card"><h3>按领域分布</h3><div class="chart-container"><canvas id="chartDomain"></canvas></div></div>
+    <div class="chart-card"><h3>按阶段分布</h3><div class="chart-container"><canvas id="chartPhase"></canvas></div></div>
+  </div>
+  <div class="charts-row">
     <div class="chart-card"><h3>按输出格式分布</h3><div class="chart-container"><canvas id="chartFormat"></canvas></div></div>
+    <div class="chart-card"><h3>按执行模式分布</h3><div class="chart-container"><canvas id="chartExec"></canvas></div></div>
+    <div class="chart-card"></div>
   </div>
   <div class="section">
     <div class="section-title">全部技能 <span class="count-badge" id="skillCount"></span></div>
@@ -331,7 +379,13 @@ zh_html = f"""<!DOCTYPE html>
 }, {
     "global": "全局", "on_demand": "按需", "compose": "组合",
 }, {
+    "define": "定义", "plan": "规划", "build": "构建",
+    "verify": "验证", "review": "审查", "ship": "交付", "execute": "执行",
+}, {
+    "serial": "串行", "parallel": "并行", "independent": "独立",
+}, {
     "all": "全部", "domains": "领域", "sources": "来源", "modes": "模式",
+    "phases": "阶段", "execs": "执行模式",
 })}
 </script>
 </body>
