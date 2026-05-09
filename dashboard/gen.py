@@ -300,7 +300,7 @@ en_html = f"""<!DOCTYPE html>
 <script>
 {make_js(js_data, {
     "biology": "Biology", "science": "Science", "engineering": "Engineering",
-    "data-science": "Data Science", "writing": "Writing", "none": "General",
+    "data-science": "Data Science", "writing": "Writing", "marketing": "Marketing", "chemistry": "Chemistry", "none": "General",
 }, {
     "global": "global", "on_demand": "on-demand", "compose": "compose",
 }, {
@@ -375,7 +375,7 @@ zh_html = f"""<!DOCTYPE html>
 <script>
 {make_js(js_data, {
     "biology": "生物学", "science": "科学", "engineering": "工程",
-    "data-science": "数据科学", "writing": "写作", "none": "通用",
+    "data-science": "数据科学", "writing": "写作", "marketing": "营销", "chemistry": "化学", "none": "通用",
 }, {
     "global": "全局", "on_demand": "按需", "compose": "组合",
 }, {
