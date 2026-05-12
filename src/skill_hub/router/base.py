@@ -71,6 +71,33 @@ class RouteOutput:
                 lines.append(self._format_skill(r, show_score=True))
             lines.append("")
 
+        # Phase-based grouping for planning visibility
+        non_global = [r for r in self.candidates if r.skill.mode.value != "global"]
+        if len(non_global) >= 2:
+            from collections import defaultdict
+            phase_groups = defaultdict(list)
+            for r in non_global:
+                phase_groups[r.skill.phase.value].append(r)
+
+            phase_order = ["define", "plan", "build", "verify", "review", "ship", "execute"]
+            phase_labels = {
+                "define": "Define (requirements, specs)",
+                "plan": "Plan (architecture, breakdown)",
+                "build": "Build (implementation, coding)",
+                "verify": "Verify (testing, debugging)",
+                "review": "Review (quality, audit)",
+                "ship": "Ship (deploy, release, docs)",
+                "execute": "Execute (general-purpose)",
+            }
+            lines.append("### Skills by Workflow Phase\n")
+            for phase in phase_order:
+                if phase in phase_groups:
+                    group = phase_groups[phase]
+                    lines.append(f"**{phase_labels.get(phase, phase)}**")
+                    for r in group[:3]:
+                        lines.append(f"  - `{r.skill.name}` — {r.skill.description[:80]}")
+                    lines.append("")
+
         lines.append("To use a skill, call `load_skill(name)` to get full instructions.")
         return "\n".join(lines)
 

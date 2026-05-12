@@ -289,6 +289,10 @@ def _parse_skill_md(content: str) -> dict:
         first_para = body.split("\n\n")[0] if body else ""
         description = first_para[:200]
 
+    # Auto-extract tags from body when frontmatter has none
+    if not tags:
+        tags = _auto_extract_tags(content, description)
+
     # Infer mode from metadata
     if has_hooks or "hooks" in content.lower() and "PreToolUse" in content:
         mode = SkillMode.GLOBAL
@@ -364,6 +368,51 @@ def _has_word(text: str, word: str) -> bool:
     """Check if word exists as a whole word in text (not substring)."""
     import re
     return bool(re.search(r'\b' + re.escape(word) + r'\b', text))
+
+
+def _auto_extract_tags(content: str, description: str) -> list[str]:
+    """Extract top keywords from SKILL.md body as auto-tags.
+
+    Uses TF-IDF on the skill's own content to find the most distinctive
+    terms. Only runs when frontmatter has no explicit tags.
+    Returns up to 8 tags.
+    """
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+    except ImportError:
+        return []
+
+    # Strip frontmatter and markdown formatting
+    body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)
+    body = re.sub(r"^#{1,6}\s+", "", body, flags=re.MULTILINE)
+    body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)  # markdown links
+    body = re.sub(r"[`*_~>]", "", body)  # inline formatting
+    body = re.sub(r"```[\s\S]*?```", "", body)  # code blocks
+    body = re.sub(r"<[^>]+>", "", body)  # HTML tags
+    body = body.strip()
+
+    if len(body) < 50:
+        return []
+
+    try:
+        vec = TfidfVectorizer(
+            max_features=20,
+            ngram_range=(1, 2),
+            stop_words="english",
+            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z-]{2,}\b",
+        )
+        vec.fit_transform([body.lower()])
+        feature_names = vec.get_feature_names_out()
+        # Filter out overly generic terms
+        skip = {"skill", "use", "when", "user", "file", "this", "that",
+                "should", "will", "can", "may", "must", "need", "want",
+                "using", "used", "make", "also", "just", "like", "one",
+                "get", "set", "run", "first", "step", "follow", "bundled",
+                "workflow", "invoke", "invoked", "explicitly", "only"}
+        tags = [t for t in feature_names if t not in skip and len(t) > 2]
+        return tags[:8]
+    except Exception:
+        return []
 
 
 def _extract_capabilities(content: str, description: str) -> tuple[list[str], list[str], str]:
