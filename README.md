@@ -7,7 +7,7 @@
 不把所有技能全文加载到上下文（贵且慢），skill-hub 维护一个**紧凑可搜索索引**。智能体搜索索引，只加载需要的技能。
 
 ```
-智能体系统提示词 (~5KB 索引, 313 技能)
+智能体系统提示词 (~5KB 索引, 309 技能)
   │
   ├── search("plot") → 3 个候选
   │
@@ -47,13 +47,16 @@ python -m skill_hub.cli.main search "phylogenetic tree"
 │              │                                              │
 │              ▼ serve                                        │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  MCP Server (6 个工具)                                │  │
+│  │  MCP Server (9 个工具)                                │  │
 │  │  ├── search_skills      — 关键词搜索                  │  │
 │  │  ├── suggest_skills     — 语义路由                    │  │
 │  │  ├── load_skill         — 加载完整 SKILL.md           │  │
 │  │  ├── skill_info         — 元数据 + 应用提示           │  │
 │  │  ├── list_skill_categories — 分类概览                 │  │
-│  │  └── plan_with_skills   — 计划→技能匹配               │  │
+│  │  ├── plan_with_skills   — 计划→技能匹配               │  │
+│  │  ├── get_skill_usage    — 使用统计 + 月度分析         │  │
+│  │  ├── search_remote_skills — 搜索 ClawHub (需确认)     │  │
+│  │  └── install_remote_skill — 安装远程技能 (需批准)     │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -83,6 +86,25 @@ python -m skill_hub.cli.main search "phylogenetic tree"
 
 ### `list_skill_categories()`
 按分类展示所有技能的紧凑概览。
+
+### `get_skill_usage(month?, top_k?)`
+查看技能使用统计。返回每个技能的调用次数、最后使用时间、月度分布。`month` 参数可筛选特定月份。数据存储在 `skill_usage.json`（gitignored），采用缓冲写入（dirty flag），查询时才落盘。
+
+### `search_remote_skills(query, top_k=10)`
+搜索 [ClawHub](https://github.com/openclaw/clawhub) 技能目录（8500+ stars 的 Agent Skill 注册中心）。
+
+**门控规则（写在 docstring 中，主模型必须遵守）：**
+1. 本地 `suggest_skills` 召回不足（score < 0.15）且任务足够专业/复杂 → 告知用户 → 用户确认后才调用
+2. 用户主动要求搜索远程技能 → 直接调用
+
+### `install_remote_skill(slug)`
+从 ClawHub 安装技能到 `skills_local/clawhub/<slug>/`，自动解析 SKILL.md 并加入本地索引。
+
+**门控规则：**
+1. 用户审查搜索结果并明确批准后才安装
+2. 用户直接指定 slug → 直接安装
+
+安装后技能融入本地索引，后续可通过 `load_skill` / `search_skills` 直接访问。
 
 ## 技能元数据
 
@@ -142,7 +164,7 @@ registries:
 | [superpowers](https://github.com/obra/superpowers) | 14 | 规划、子智能体调度、调试、git 工作流 |
 | [nature-skills](https://github.com/Yuan1z0825/nature-skills) | 6 | Nature 期刊写作、图表、数据处理 |
 
-**总计: 313 技能，9 来源**
+**总计: 309 技能，8 来源**
 
 ## 路由架构
 
@@ -175,6 +197,47 @@ skill-hub 可与 superpowers 等规划工具配合：
 
 子智能体有独立上下文，不污染主对话。
 
+## ClawHub 远程技能集成
+
+当本地 309 个技能无法覆盖某个专业任务时，可通过 [ClawHub](https://github.com/openclaw/clawhub) 搜索和安装远程技能。
+
+```
+用户任务 → suggest_skills → 本地召回不足?
+    ↓ 是 (需用户确认)
+search_remote_skills("causal inference DID")
+    ↓ 返回 ClawHub 候选列表
+用户选择 → install_remote_skill("causal-inference")
+    ↓ 安装到 skills_local/clawhub/
+    ↓ 自动加入本地索引
+后续直接召回，无需再次远程搜索
+```
+
+**设计原则：**
+- 不全量加载 — 只安装用户确认需要的技能
+- 严格门控 — 主模型判断 + 用户确认，不会自动触发
+- 安装即本地 — 远程技能安装后与本地技能无区别
+
+## 使用统计
+
+`get_skill_usage` 工具追踪每次 `load_skill` 调用：
+
+```json
+{
+  "total_skills": 309,
+  "used_skills": 12,
+  "unused_skills": 297,
+  "usage": {
+    "tdd": { "count": 8, "last_used": "2026-05-12T14:30:00" },
+    "guard": { "count": 3, "last_used": "2026-05-11T09:15:00" }
+  }
+}
+```
+
+生成可视化分析面板：
+```bash
+python dashboard/gen_usage.py   # 输出 dashboard/skill-usage.html
+```
+
 ## 项目结构
 
 ```
@@ -182,9 +245,10 @@ skill-hub/
 ├── config/
 │   └── registries.yaml          # 来源定义 (gitignored)
 ├── dashboard/
-│   ├── index.html               # 交互式技能面板 (英文)
-│   ├── index_zh.html            # 中文版
-│   └── gen.py                   # 从 skill_index.json 重新生成
+│   ├── index.html               # 交互式技能面板
+│   ├── skill-usage.html         # 使用率分析面板
+│   ├── gen.py                   # 生成技能面板
+│   └── gen_usage.py             # 生成使用分析面板
 ├── src/skill_hub/
 │   ├── models.py                # SkillMeta + SkillPhase + ExecutionMode
 │   ├── indexer/skill_index.py   # 可搜索索引
@@ -194,10 +258,12 @@ skill-hub/
 │   │   └── syncer.py            # 多源编排器 (增量)
 │   ├── router/                  # 技能路由 (keyword / TF-IDF)
 │   ├── selector/                # 技能选择器 (隔离上下文)
-│   ├── mcp/server.py            # MCP 工具服务器 (6 工具)
+│   ├── mcp/server.py            # MCP 工具服务器 (9 工具)
 │   └── cli/main.py              # CLI 入口
 ├── skill_index.json             # 生成的索引 (gitignored)
+├── skill_usage.json             # 使用统计 (gitignored)
 ├── skills_local/                # 缓存的技能目录 (gitignored)
+│   └── clawhub/                 # ClawHub 安装的技能 (gitignored)
 └── tests/
 ```
 
@@ -211,20 +277,26 @@ python dashboard/gen.py   # 同步后重新生成
 
 ## 经验总结
 
+### TF-IDF 召回率优化
+- 11 字段语料库（vs 原始 5 字段）：name, description, tags, use_when, category, domain, phase, output_formats, input_types, triggers, decision_card
+- 意图→阶段/领域映射：查询中的 "test" 自动提升 verify 阶段技能的分数
+- 跨领域惩罚 (-0.07) 和阶段不匹配惩罚 (-0.05)
+- 名称精确匹配奖励 (0.15 × 命中率)
+
 ### domain 推断要用词边界匹配
 子串匹配会导致 "generate" 匹配 "gene"+"rna"，把营销技能误判为 biology。用 `\b` 正则词边界解决。
 
 ### local_path 必须持久化到索引
 `to_index_entry()` 最初没包含 `local_path`，导致 `load_skill` 找不到文件。索引是唯一的持久化存储，所有运行时需要的字段都必须包含。
 
-### git pull --ff-only 会失败
-远程 force-push 后本地分支分叉，`--ff-only` 失败。需要 fallback 到 `git fetch --depth 1 origin main && git reset --hard origin/main`。
-
-### glob 配置可能与实际目录结构不匹配
-`*/SKILL.md` 匹配不到 `skills/xxx/SKILL.md`。加 fallback：glob 无结果时自动用 `**/SKILL.md` 重试。
+### 高频写入用 dirty flag 缓冲
+`load_skill` 每次调用都记录使用事件，但不立即写盘。用 `usage_dirty = [False]` 标记，只在 `get_skill_usage` 查询时才落盘。
 
 ### MCP 工具在启动时注册
 新增的 MCP 工具需要重启服务器才能被客户端发现。不能热加载。
+
+### ClawHub CLI 需要显式 --workdir
+`npx clawhub install` 默认用 cwd 作为工作目录，但 npx 执行时 cwd 可能不是项目根目录。必须 `--workdir` 明确传入。
 
 ## License
 
