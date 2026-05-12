@@ -289,6 +289,10 @@ def _parse_skill_md(content: str) -> dict:
         first_para = body.split("\n\n")[0] if body else ""
         description = first_para[:200]
 
+    # Auto-extract tags from body when frontmatter has none
+    if not tags:
+        tags = _auto_extract_tags(content, description)
+
     # Infer mode from metadata
     if has_hooks or "hooks" in content.lower() and "PreToolUse" in content:
         mode = SkillMode.GLOBAL
@@ -364,6 +368,87 @@ def _has_word(text: str, word: str) -> bool:
     """Check if word exists as a whole word in text (not substring)."""
     import re
     return bool(re.search(r'\b' + re.escape(word) + r'\b', text))
+
+
+def _auto_extract_tags(content: str, description: str) -> list[str]:
+    """Extract top keywords from SKILL.md body as auto-tags.
+
+    Uses word frequency (not TF-IDF — single document, IDF=1) to find
+    the most prominent terms. Only runs when frontmatter has no explicit tags.
+    Returns up to 8 tags.
+    """
+    from collections import Counter
+
+    # Strip frontmatter and markdown formatting aggressively
+    body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)
+    body = re.sub(r"^#{1,6}\s+", "", body, flags=re.MULTILINE)
+    body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)  # markdown links
+    body = re.sub(r"[`*_~>]", "", body)  # inline formatting
+    body = re.sub(r"```[\s\S]*?```", " ", body)  # code blocks — replace with space
+    body = re.sub(r"<[^>]+>", " ", body)  # HTML tags
+    body = re.sub(r"\$[A-Z_]+", "", body)  # $VARIABLE placeholders
+    body = re.sub(r"--[a-z-]+", "", body)  # CLI flags like --force
+    body = re.sub(r"\b[a-z]+/[a-z]+\b", "", body)  # paths like src/utils
+    body = body.strip()
+
+    if len(body) < 50:
+        return []
+
+    # Extract words (3+ chars) and bigrams
+    words = re.findall(r"(?u)\b[a-zA-Z][a-zA-Z-]{2,}\b", body.lower())
+    bigrams = [f"{a} {b}" for a, b in zip(words, words[1:])]
+
+    # Generic terms, code tokens, tool names, CLI artifacts — skip these
+    skip = {
+        "skill", "use", "when", "user", "file", "this", "that",
+        "should", "will", "can", "may", "must", "need", "want",
+        "using", "used", "make", "also", "just", "like", "one",
+        "get", "set", "run", "first", "step", "follow", "bundled",
+        "workflow", "invoke", "invoked", "explicitly", "only",
+        "create", "provide", "allow", "ensure", "return", "check",
+        "include", "support", "default", "option", "value", "type",
+        "based", "simple", "specific", "different", "available",
+        "example", "command", "output", "result", "content",
+        "does", "currently", "note", "original", "current", "guide",
+        # CLI / tool artifacts
+        "bash", "bin", "claude", "claude skills", "dev", "main",
+        "branch", "node", "python", "pip", "npm", "yarn",
+        "stdout", "stderr", "stdin", "exit", "arg", "args",
+        "flag", "flags", "cli", "cmd", "shell", "terminal",
+        "bundled workflow", "invoke skill", "explicitly invoke",
+        "workflow step", "skill invoke",
+    }
+
+    # English stopwords (inlined to avoid nltk dependency)
+    stopwords = {
+        "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
+        "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+        "this", "but", "his", "by", "from", "they", "we", "say", "her",
+        "she", "or", "an", "will", "my", "one", "all", "would", "there",
+        "their", "what", "so", "up", "out", "if", "about", "who", "get",
+        "which", "go", "me", "when", "make", "can", "like", "time", "no",
+        "just", "him", "know", "take", "people", "into", "year", "your",
+        "good", "some", "could", "them", "see", "other", "than", "then",
+        "now", "look", "only", "come", "its", "over", "think", "also",
+        "back", "after", "use", "two", "how", "our", "work", "first",
+        "well", "way", "even", "new", "want", "because", "any", "these",
+        "give", "day", "most", "us", "is", "are", "was", "were", "been",
+        "has", "had", "did", "does", "doing", "done", "being",
+    }
+
+    counter = Counter()
+    for w in words:
+        if w not in skip and w not in stopwords and len(w) > 3:
+            counter[w] += 1
+    for bg in bigrams:
+        if bg not in skip:
+            counter[bg] += 1
+
+    # Take top by frequency, prefer words over bigrams when tied
+    tags = [tag for tag, _ in counter.most_common(30)]
+    # Filter: prefer longer/more specific terms
+    tags = [t for t in tags if len(t) > 3 or " " in t]
+    return tags[:8]
 
 
 def _extract_capabilities(content: str, description: str) -> tuple[list[str], list[str], str]:

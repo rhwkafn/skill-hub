@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from .base import SkillSource
-from .github_source import _infer_execution_mode, _infer_phase
+from .github_source import _auto_extract_tags, _infer_execution_mode, _infer_phase
 from ..models import SkillMeta
 
 
@@ -36,6 +36,8 @@ class LocalSource(SkillSource):
                 continue
             content = skill_file.read_text(encoding="utf-8")
             description, use_when, tags, category = _parse_skill_frontmatter(content)
+            if not tags:
+                tags = _auto_extract_tags(content, description)
             skill = SkillMeta(
                 name=skill_dir.name,
                 registry=self.name,

@@ -2,12 +2,49 @@
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from .base import SkillRouter, RouteOutput, RouteResult
 from ..models import SkillMeta, SkillMode
+
+# Query intent → expected phase mapping
+_INTENT_PHASE = {
+    "debug": "verify", "test": "verify", "diagnose": "verify", "fix": "verify",
+    "investigate": "verify", "troubleshoot": "verify", "qa": "verify",
+    "tests": "verify", "testing": "verify", "unit": "verify", "integration": "verify",
+    "implement": "build", "create": "build", "write": "build", "build": "build",
+    "develop": "build", "code": "build", "generate": "build", "produce": "build",
+    "review": "review", "audit": "review", "refactor": "review", "quality": "review",
+    "security": "review", "hardening": "review",
+    "deploy": "ship", "release": "ship", "launch": "ship", "document": "ship",
+    "plan": "plan", "architect": "plan", "design": "plan", "roadmap": "plan",
+    "architecture": "plan",
+    "spec": "define", "brainstorm": "define", "requirement": "define",
+}
+
+# Query intent → expected domain mapping
+_INTENT_DOMAIN = {
+    "test": "engineering", "tests": "engineering", "testing": "engineering",
+    "debug": "engineering", "deploy": "engineering", "unit": "engineering",
+    "code": "engineering", "refactor": "engineering", "api": "engineering",
+    "microservice": "engineering", "pull": "engineering", "pr": "engineering",
+    "write": "writing", "blog": "writing", "article": "writing", "copy": "writing",
+    "marketing": "marketing", "seo": "marketing", "campaign": "marketing",
+    "research": "science", "paper": "science", "experiment": "science",
+}
+
+
+def _clean_decision_card(text: str) -> str:
+    """Remove structured tokens from decision_card that pollute TF-IDF."""
+    # Remove [name] mode=X phase=Y hooks=true needs=X,Y
+    text = re.sub(r"\[.*?\]\s*", "", text)
+    text = re.sub(r"\b(mode|phase|hooks|needs|true|false|on_demand|global|compose)=\S+", "", text)
+    text = re.sub(r"\b(define|plan|build|verify|review|ship|execute)\b", "", text)
+    return text.strip()
 
 
 class TFIDFRouter(SkillRouter):
@@ -20,6 +57,7 @@ class TFIDFRouter(SkillRouter):
         self._skill_vectors = None
         self._skills: list[SkillMeta] = []
         self._corpus: list[str] = []
+        self._index_hash: str = ""
 
     def _build_index(self, skills: list[SkillMeta]):
         self._skills = skills
@@ -31,6 +69,12 @@ class TFIDFRouter(SkillRouter):
                 s.use_when,
                 " ".join(s.tags),
                 " ".join(s.triggers),
+                # Metadata fields for better recall
+                s.domain,
+                s.phase.value if hasattr(s.phase, "value") else str(s.phase),
+                " ".join(s.output_formats),
+                " ".join(s.input_types),
+                _clean_decision_card(s.decision_card),
             ])
             self._corpus.append(text.lower())
 
@@ -41,12 +85,63 @@ class TFIDFRouter(SkillRouter):
         )
         self._skill_vectors = self._vectorizer.fit_transform(self._corpus)
 
-    def route(self, query: str, skills: list[SkillMeta], top_k: int = 20) -> RouteOutput:
-        if not self._skills or len(self._skills) != len(skills):
-            self._build_index(skills)
+    def _skills_hash(self, skills: list[SkillMeta]) -> str:
+        """Fast hash to detect when index needs rebuilding."""
+        return f"{len(skills)}_{sum(hash(s.name) for s in skills) & 0xFFFFFFFF:08x}"
 
-        query_vec = self._vectorizer.transform([query.lower()])
+    def route(self, query: str, skills: list[SkillMeta], top_k: int = 20) -> RouteOutput:
+        h = self._skills_hash(skills)
+        if h != self._index_hash:
+            self._build_index(skills)
+            self._index_hash = h
+
+        query_lower = query.lower()
+        query_words = set(re.findall(r"[a-z]+", query_lower))
+        query_vec = self._vectorizer.transform([query_lower])
         similarities = cosine_similarity(query_vec, self._skill_vectors).flatten()
+
+        # Detect intent from query
+        intent_phases = set()
+        intent_domains = set()
+        for word in query_words:
+            if word in _INTENT_PHASE:
+                intent_phases.add(_INTENT_PHASE[word])
+            if word in _INTENT_DOMAIN:
+                intent_domains.add(_INTENT_DOMAIN[word])
+
+        for idx, s in enumerate(self._skills):
+            boost = 0.0
+            penalty = 0.0
+
+            # Intent-phase alignment (cumulative: more intent words = stronger signal)
+            if intent_phases and s.phase.value != "execute":
+                if s.phase.value in intent_phases:
+                    boost += 0.10 + 0.03 * len(intent_phases)
+                else:
+                    penalty -= 0.05  # penalty for phase mismatch
+
+            # Intent-domain alignment
+            if intent_domains and s.domain:
+                if s.domain in intent_domains:
+                    boost += 0.10
+                else:
+                    penalty -= 0.07  # strong penalty for domain mismatch
+
+            # Domain keyword direct match
+            if s.domain and any(w in query_lower for w in s.domain.replace("-", " ").split()):
+                boost += 0.08
+
+            # use_when relevance
+            if s.use_when and any(w in s.use_when.lower() for w in query_words if len(w) > 3):
+                boost += 0.06
+
+            # Name exact match bonus: if query words match skill name words
+            name_words = set(s.name.replace("-", " ").lower().split())
+            name_hits = query_words & name_words
+            if name_hits:
+                boost += 0.15 * len(name_hits) / max(len(name_words), 1)
+
+            similarities[idx] += boost + penalty
 
         top_indices = np.argsort(similarities)[::-1][:top_k]
 

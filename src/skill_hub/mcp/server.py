@@ -86,11 +86,12 @@ def create_server(
     mcp = FastMCP(
         "skill-hub",
         instructions=(
-            f"Agent skill registry with {len(all_skills)} skills across 7 sources. "
+            f"Agent skill registry with {len(all_skills)} skills across {len(set(s.registry for s in all_skills))} sources. "
             f"Router: {router.name}. Selector: {selector_status}. "
             "Use suggest_skills for complex tasks. "
             "Use search_skills for keyword lookup. "
-            "Use load_skill to get full instructions for a chosen skill."
+            "Use load_skill to get full instructions for a chosen skill. "
+            "Use plan_with_skills for complex tasks."
         ),
     )
 
@@ -195,7 +196,19 @@ def create_server(
                           for r in route_output.global_skills if id(r.skill) in candidate_set],
         )
 
-        return filtered_output.to_prompt()
+        result = filtered_output.to_prompt()
+
+        # Add planning hint for multi-skill tasks
+        if len(candidates) >= 3:
+            result += (
+                "\n\n## Planning Recommendation\n"
+                "This task matched multiple skills. Consider using `plan_with_skills` "
+                "to create a structured execution plan with skill assignments per sub-task.\n"
+                "Workflow: `suggest_skills` → understand capabilities → "
+                "`plan_with_skills` → assign skills to sub-tasks → `load_skill` → execute."
+            )
+
+        return result
 
     @mcp.tool()
     def list_skill_categories() -> str:
