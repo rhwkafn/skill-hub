@@ -90,7 +90,7 @@ def create_server(
             f"Router: {router.name}. Selector: {selector_status}. "
             "Use suggest_skills for complex tasks. "
             "Use search_skills for keyword lookup. "
-            "Use load_skill to get full instructions for a chosen skill."
+            "Use load_skill to get full instructions for a chosen skill. "
             "Use plan_with_skills for complex tasks."
         ),
     )

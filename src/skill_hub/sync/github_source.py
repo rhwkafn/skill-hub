@@ -373,14 +373,11 @@ def _has_word(text: str, word: str) -> bool:
 def _auto_extract_tags(content: str, description: str) -> list[str]:
     """Extract top keywords from SKILL.md body as auto-tags.
 
-    Uses TF-IDF on the skill's own content to find the most distinctive
-    terms. Only runs when frontmatter has no explicit tags.
+    Uses word frequency (not TF-IDF — single document, IDF=1) to find
+    the most prominent terms. Only runs when frontmatter has no explicit tags.
     Returns up to 8 tags.
     """
-    try:
-        from sklearn.feature_extraction.text import TfidfVectorizer
-    except ImportError:
-        return []
+    from collections import Counter
 
     # Strip frontmatter and markdown formatting aggressively
     body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)
@@ -397,43 +394,61 @@ def _auto_extract_tags(content: str, description: str) -> list[str]:
     if len(body) < 50:
         return []
 
-    try:
-        vec = TfidfVectorizer(
-            max_features=30,
-            ngram_range=(1, 2),
-            stop_words="english",
-            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z-]{3,}\b",
-        )
-        vec.fit_transform([body.lower()])
-        feature_names = vec.get_feature_names_out()
-        # Filter: generic terms, code tokens, tool names, CLI artifacts
-        skip = {
-            # Generic verbs/adjectives
-            "skill", "use", "when", "user", "file", "this", "that",
-            "should", "will", "can", "may", "must", "need", "want",
-            "using", "used", "make", "also", "just", "like", "one",
-            "get", "set", "run", "first", "step", "follow", "bundled",
-            "workflow", "invoke", "invoked", "explicitly", "only",
-            "create", "provide", "allow", "ensure", "return", "check",
-            "include", "support", "default", "option", "value", "type",
-            "based", "simple", "specific", "different", "available",
-            "example", "command", "output", "result", "content",
-            # CLI / tool artifacts
-            "bash", "bin", "claude", "claude skills", "dev", "main",
-            "branch", "node", "python", "pip", "npm", "yarn",
-            "stdout", "stderr", "stdin", "exit", "arg", "args",
-            "flag", "flags", "cli", "cmd", "shell", "terminal",
-            # Common SKILL.md boilerplate
-            "skill invoke", "invoke skill", "explicitly invoke",
-            "bundled workflow", "bundled", "workflow step",
-        }
-        tags = [t for t in feature_names if t not in skip and len(t) > 3]
-        # Deduplicate: if "debug" and "debug tool" both exist, keep both
-        # but filter single-char tokens that snuck through
-        tags = [t for t in tags if not (len(t) <= 3 and " " not in t)]
-        return tags[:8]
-    except Exception:
-        return []
+    # Extract words (3+ chars) and bigrams
+    words = re.findall(r"(?u)\b[a-zA-Z][a-zA-Z-]{2,}\b", body.lower())
+    bigrams = [f"{a} {b}" for a, b in zip(words, words[1:])]
+
+    # Generic terms, code tokens, tool names, CLI artifacts — skip these
+    skip = {
+        "skill", "use", "when", "user", "file", "this", "that",
+        "should", "will", "can", "may", "must", "need", "want",
+        "using", "used", "make", "also", "just", "like", "one",
+        "get", "set", "run", "first", "step", "follow", "bundled",
+        "workflow", "invoke", "invoked", "explicitly", "only",
+        "create", "provide", "allow", "ensure", "return", "check",
+        "include", "support", "default", "option", "value", "type",
+        "based", "simple", "specific", "different", "available",
+        "example", "command", "output", "result", "content",
+        "does", "currently", "note", "original", "current", "guide",
+        # CLI / tool artifacts
+        "bash", "bin", "claude", "claude skills", "dev", "main",
+        "branch", "node", "python", "pip", "npm", "yarn",
+        "stdout", "stderr", "stdin", "exit", "arg", "args",
+        "flag", "flags", "cli", "cmd", "shell", "terminal",
+        "bundled workflow", "invoke skill", "explicitly invoke",
+        "workflow step", "skill invoke",
+    }
+
+    # English stopwords (inlined to avoid nltk dependency)
+    stopwords = {
+        "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
+        "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+        "this", "but", "his", "by", "from", "they", "we", "say", "her",
+        "she", "or", "an", "will", "my", "one", "all", "would", "there",
+        "their", "what", "so", "up", "out", "if", "about", "who", "get",
+        "which", "go", "me", "when", "make", "can", "like", "time", "no",
+        "just", "him", "know", "take", "people", "into", "year", "your",
+        "good", "some", "could", "them", "see", "other", "than", "then",
+        "now", "look", "only", "come", "its", "over", "think", "also",
+        "back", "after", "use", "two", "how", "our", "work", "first",
+        "well", "way", "even", "new", "want", "because", "any", "these",
+        "give", "day", "most", "us", "is", "are", "was", "were", "been",
+        "has", "had", "did", "does", "doing", "done", "being",
+    }
+
+    counter = Counter()
+    for w in words:
+        if w not in skip and w not in stopwords and len(w) > 3:
+            counter[w] += 1
+    for bg in bigrams:
+        if bg not in skip:
+            counter[bg] += 1
+
+    # Take top by frequency, prefer words over bigrams when tied
+    tags = [tag for tag, _ in counter.most_common(30)]
+    # Filter: prefer longer/more specific terms
+    tags = [t for t in tags if len(t) > 3 or " " in t]
+    return tags[:8]
 
 
 def _extract_capabilities(content: str, description: str) -> tuple[list[str], list[str], str]:
