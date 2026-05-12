@@ -31,6 +31,7 @@ from ..registry import SkillRegistry
 from ..router import KeywordRouter, TFIDFRouter
 from ..router.base import SkillRouter
 from ..selector import SkillSelector
+from ..utils import prepend_resource_manifest
 
 
 def _find_project_root() -> Path:
@@ -169,11 +170,15 @@ def create_server(
     def load_skill(name: str) -> str:
         """Load the full SKILL.md content for a skill.
 
+        For skills that reference local files (scripts/, references/, assets/),
+        the response includes a resource manifest with absolute paths so the
+        agent can read referenced files on demand.
+
         Args:
             name: Exact skill name (e.g. "tdd", "guard", "investigate")
 
         Returns:
-            Full SKILL.md content or error message.
+            Full SKILL.md content with optional resource manifest header.
         """
         skill = index.get(name)
         if not skill:
@@ -187,19 +192,32 @@ def create_server(
         _record_usage(usage_data, name)
         usage_dirty[0] = True
 
+        content = None
+        skill_dir = None
+
         if skill.local_path:
-            skill_md = Path(skill.local_path) / "SKILL.md"
+            skill_dir = Path(skill.local_path)
+            skill_md = skill_dir / "SKILL.md"
             if skill_md.exists():
-                return skill_md.read_text(encoding="utf-8")
+                content = skill_md.read_text(encoding="utf-8")
 
-        cache_dir = root / "skills_local"
-        if skill.repo_path:
-            safe_repo = skill.registry.replace("/", "--")
-            cached = cache_dir / safe_repo / skill.repo_path
-            if cached.exists():
-                return cached.read_text(encoding="utf-8")
+        if content is None:
+            cache_dir = root / "skills_local"
+            if skill.repo_path:
+                safe_repo = skill.registry.replace("/", "--")
+                cached = cache_dir / safe_repo / skill.repo_path
+                if cached.exists():
+                    content = cached.read_text(encoding="utf-8")
+                    skill_dir = cached.parent
 
-        return f"Skill '{name}' exists but content not cached. Run sync first."
+        if content is None:
+            return f"Skill '{name}' exists but content not cached. Run sync first."
+
+        # Prepend resource manifest for skills that need local files
+        if skill.requires_clone and skill_dir:
+            content = prepend_resource_manifest(content, skill_dir, skill.pip_deps)
+
+        return content
 
     @mcp.tool()
     def suggest_skills(

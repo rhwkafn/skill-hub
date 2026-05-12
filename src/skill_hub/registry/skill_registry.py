@@ -48,7 +48,11 @@ class SkillRegistry:
         ]
 
     async def load(self, name: str) -> str | None:
-        """Load the full SKILL.md content for a skill. Caches the result."""
+        """Load the full SKILL.md content for a skill. Caches the result.
+
+        For skills with requires_clone=True, prepends a resource manifest
+        with absolute paths so the agent can read referenced files.
+        """
         if name in self._loaded:
             return self._loaded[name]
 
@@ -56,22 +60,32 @@ class SkillRegistry:
         if not skill:
             return None
 
+        content = None
+        skill_dir = None
+
         # Try local path first
         if skill.local_path:
-            skill_md = Path(skill.local_path) / "SKILL.md"
+            skill_dir = Path(skill.local_path)
+            skill_md = skill_dir / "SKILL.md"
             if skill_md.exists():
                 content = skill_md.read_text(encoding="utf-8")
-                self._loaded[name] = content
-                return content
 
         # Try fetching from source
-        source = self._sources.get(skill.registry)
-        if source:
-            content = await source.fetch_skill(skill)
-            self._loaded[name] = content
-            return content
+        if content is None:
+            source = self._sources.get(skill.registry)
+            if source:
+                content = await source.fetch_skill(skill)
 
-        return None
+        if content is None:
+            return None
+
+        # Prepend resource manifest for skills that need local files
+        if skill.requires_clone and skill_dir:
+            from ..utils import prepend_resource_manifest
+            content = prepend_resource_manifest(content, skill_dir, skill.pip_deps)
+
+        self._loaded[name] = content
+        return content
 
     def compact_prompt(self, max_skills: int = 50) -> str:
         """Generate a compact skill catalog for injection into agent system prompts.

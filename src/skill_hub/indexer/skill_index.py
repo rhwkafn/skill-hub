@@ -81,6 +81,8 @@ class SkillIndex:
             entry.setdefault("domain", "")
             entry.setdefault("phase", "execute")
             entry.setdefault("execution_mode", "independent")
+            entry.setdefault("requires_clone", False)
+            entry.setdefault("pip_deps", [])
             # Convert string enums
             from ..models import SkillMode, SkillPhase, ExecutionMode
             entry["mode"] = SkillMode(entry["mode"])

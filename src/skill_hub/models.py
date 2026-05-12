@@ -56,6 +56,9 @@ class SkillMeta:
     # Workflow integration
     phase: SkillPhase = SkillPhase.EXECUTE                     # which workflow phase this skill serves
     execution_mode: ExecutionMode = ExecutionMode.INDEPENDENT  # how to run relative to other tasks
+    # Resource dependencies — for skills that need local files beyond SKILL.md
+    requires_clone: bool = False  # skill references scripts/, references/, assets/ etc.
+    pip_deps: list[str] = field(default_factory=list)  # Python packages needed (e.g. ["python-docx", "pypdf"])
 
     def to_index_entry(self) -> dict:
         """Minimal dict for the searchable index."""
@@ -79,6 +82,8 @@ class SkillMeta:
             "domain": self.domain,
             "phase": self.phase.value,
             "execution_mode": self.execution_mode.value,
+            "requires_clone": self.requires_clone,
+            "pip_deps": self.pip_deps,
         }
 
     def build_decision_card(self, content_head: str = "") -> str:

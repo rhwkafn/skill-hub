@@ -130,10 +130,14 @@ class GitHubSource(SkillSource):
                 skill.phase = meta["phase"]
                 skill.execution_mode = meta["execution_mode"]
 
+                # Detect resource dependencies
+                skill.requires_clone, skill.pip_deps = _detect_resource_deps(skill_dir, skill_content)
+
                 skill.build_decision_card(skill_content)
 
                 file_count = sum(1 for _ in skill_dir.rglob("*") if _.is_file())
-                print(f"    [{self.name}] {skill.name}/ ({file_count} files)")
+                dep_tag = " [resources]" if skill.requires_clone else ""
+                print(f"    [{self.name}] {skill.name}/ ({file_count} files){dep_tag}")
 
             except Exception as e:
                 print(f"    [{self.name}] WARN: failed to parse {skill.name}: {type(e).__name__}: {e}")
@@ -513,3 +517,35 @@ def _extract_capabilities(content: str, description: str) -> tuple[list[str], li
             break
 
     return output_formats, input_types, domain
+
+
+def _detect_resource_deps(skill_dir: Path, content: str) -> tuple[bool, list[str]]:
+    """Detect whether a skill needs its full repo directory (not just SKILL.md).
+
+    Scans SKILL.md for references to local directories (scripts/, references/, assets/)
+    and Python import patterns that imply third-party dependencies.
+
+    Returns:
+        (requires_clone, pip_deps)
+    """
+    from ..utils import _find_resource_refs
+
+    referenced_dirs = {ref.split("/")[0] for ref in _find_resource_refs(content)}
+    requires_clone = len(referenced_dirs) > 0
+
+    # Detect pip dependencies from requirements.txt if it exists
+    pip_deps: list[str] = []
+    req_file = skill_dir / "requirements.txt"
+    if req_file.exists():
+        try:
+            for line in req_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and not line.startswith("-"):
+                    # Strip version specifiers: "python-docx>=0.8" -> "python-docx"
+                    dep = re.split(r'[><=!~\[]', line)[0].strip()
+                    if dep:
+                        pip_deps.append(dep)
+        except OSError:
+            pass
+
+    return requires_clone, pip_deps
