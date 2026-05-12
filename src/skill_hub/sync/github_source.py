@@ -382,13 +382,16 @@ def _auto_extract_tags(content: str, description: str) -> list[str]:
     except ImportError:
         return []
 
-    # Strip frontmatter and markdown formatting
+    # Strip frontmatter and markdown formatting aggressively
     body = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL)
     body = re.sub(r"^#{1,6}\s+", "", body, flags=re.MULTILINE)
     body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)  # markdown links
     body = re.sub(r"[`*_~>]", "", body)  # inline formatting
-    body = re.sub(r"```[\s\S]*?```", "", body)  # code blocks
-    body = re.sub(r"<[^>]+>", "", body)  # HTML tags
+    body = re.sub(r"```[\s\S]*?```", " ", body)  # code blocks — replace with space
+    body = re.sub(r"<[^>]+>", " ", body)  # HTML tags
+    body = re.sub(r"\$[A-Z_]+", "", body)  # $VARIABLE placeholders
+    body = re.sub(r"--[a-z-]+", "", body)  # CLI flags like --force
+    body = re.sub(r"\b[a-z]+/[a-z]+\b", "", body)  # paths like src/utils
     body = body.strip()
 
     if len(body) < 50:
@@ -396,20 +399,38 @@ def _auto_extract_tags(content: str, description: str) -> list[str]:
 
     try:
         vec = TfidfVectorizer(
-            max_features=20,
+            max_features=30,
             ngram_range=(1, 2),
             stop_words="english",
-            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z-]{2,}\b",
+            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z-]{3,}\b",
         )
         vec.fit_transform([body.lower()])
         feature_names = vec.get_feature_names_out()
-        # Filter out overly generic terms
-        skip = {"skill", "use", "when", "user", "file", "this", "that",
-                "should", "will", "can", "may", "must", "need", "want",
-                "using", "used", "make", "also", "just", "like", "one",
-                "get", "set", "run", "first", "step", "follow", "bundled",
-                "workflow", "invoke", "invoked", "explicitly", "only"}
-        tags = [t for t in feature_names if t not in skip and len(t) > 2]
+        # Filter: generic terms, code tokens, tool names, CLI artifacts
+        skip = {
+            # Generic verbs/adjectives
+            "skill", "use", "when", "user", "file", "this", "that",
+            "should", "will", "can", "may", "must", "need", "want",
+            "using", "used", "make", "also", "just", "like", "one",
+            "get", "set", "run", "first", "step", "follow", "bundled",
+            "workflow", "invoke", "invoked", "explicitly", "only",
+            "create", "provide", "allow", "ensure", "return", "check",
+            "include", "support", "default", "option", "value", "type",
+            "based", "simple", "specific", "different", "available",
+            "example", "command", "output", "result", "content",
+            # CLI / tool artifacts
+            "bash", "bin", "claude", "claude skills", "dev", "main",
+            "branch", "node", "python", "pip", "npm", "yarn",
+            "stdout", "stderr", "stdin", "exit", "arg", "args",
+            "flag", "flags", "cli", "cmd", "shell", "terminal",
+            # Common SKILL.md boilerplate
+            "skill invoke", "invoke skill", "explicitly invoke",
+            "bundled workflow", "bundled", "workflow step",
+        }
+        tags = [t for t in feature_names if t not in skip and len(t) > 3]
+        # Deduplicate: if "debug" and "debug tool" both exist, keep both
+        # but filter single-char tokens that snuck through
+        tags = [t for t in tags if not (len(t) <= 3 and " " not in t)]
         return tags[:8]
     except Exception:
         return []
