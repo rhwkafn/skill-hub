@@ -12,6 +12,7 @@ venv/
 .pytest_cache/
 .mypy_cache/
 skill_index.json
+skill_usage.json
 skills_local/
 .mcp.json
 config/registries.yaml

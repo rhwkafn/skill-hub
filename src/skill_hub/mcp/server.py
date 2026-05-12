@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -38,6 +39,36 @@ def _find_project_root() -> Path:
             return d
         d = d.parent
     return Path.cwd()
+
+
+def _load_usage(path: Path) -> dict:
+    """Load skill usage stats from JSON file."""
+    if path.exists():
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def _save_usage(path: Path, data: dict) -> None:
+    """Save skill usage stats to JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _record_usage(usage: dict, name: str) -> None:
+    """Record a skill usage event with timestamp."""
+    import datetime
+    now = datetime.datetime.now()
+    ts = now.isoformat(timespec="seconds")
+    month_key = now.strftime("%Y-%m")
+
+    if name not in usage:
+        usage[name] = {"total": 0, "months": {}, "last_used": None}
+    usage[name]["total"] = usage[name].get("total", 0) + 1
+    usage[name]["last_used"] = ts
+    usage[name]["months"][month_key] = usage[name].get("months", {}).get(month_key, 0) + 1
 
 
 def _create_selector(args) -> SkillSelector | None:
@@ -78,6 +109,9 @@ def create_server(
     registry = SkillRegistry(index)
     all_skills = list(index.skills.values())
 
+    usage_path = root / "skill_usage.json"
+    usage_data = _load_usage(usage_path)
+
     if router is None:
         router = TFIDFRouter()  # default: local semantic matching, no API needed
 
@@ -91,7 +125,8 @@ def create_server(
             "Use suggest_skills for complex tasks. "
             "Use search_skills for keyword lookup. "
             "Use load_skill to get full instructions for a chosen skill. "
-            "Use plan_with_skills for complex tasks."
+            "Use plan_with_skills for complex tasks. "
+            "Use get_skill_usage to see usage statistics and find unused skills."
         ),
     )
 
@@ -128,6 +163,10 @@ def create_server(
                 return (f"Skill '{name}' not found. Did you mean:\n" +
                         "\n".join(f"  - {c.name}" for c in candidates[:5]))
             return f"Skill '{name}' not found. Use search_skills to discover skills."
+
+        # Record usage
+        _record_usage(usage_data, name)
+        _save_usage(usage_path, usage_data)
 
         if skill.local_path:
             skill_md = Path(skill.local_path) / "SKILL.md"
@@ -237,6 +276,57 @@ def create_server(
             "has_local_content": skill.local_path is not None,
             "decision_card": skill.decision_card,
             "apply_hint": skill.apply_hint(),
+        }, indent=2, ensure_ascii=False)
+
+    @mcp.tool()
+    def get_skill_usage(month: str = "", top_k: int = 0) -> str:
+        """Get skill usage statistics.
+
+        Args:
+            month: Filter by month (e.g. "2026-05"). Empty = all time totals.
+            top_k: Limit to top N most-used skills. 0 = return all.
+
+        Returns:
+            JSON with per-skill usage counts, monthly breakdown, and unused skills list.
+        """
+        import datetime
+
+        # Build usage report
+        all_names = {s.name for s in all_skills}
+        used_names = set(usage_data.keys())
+        unused = sorted(all_names - used_names)
+
+        report = {}
+        for name in all_names:
+            entry = usage_data.get(name, {"total": 0, "months": {}, "last_used": None})
+            total = entry.get("total", 0)
+            months = entry.get("months", {})
+            last_used = entry.get("last_used")
+
+            if month:
+                count = months.get(month, 0)
+            else:
+                count = total
+
+            report[name] = {
+                "count": count,
+                "total": total,
+                "last_used": last_used,
+                "months": months,
+            }
+
+        # Sort by count descending
+        sorted_skills = sorted(report.items(), key=lambda x: x[1]["count"], reverse=True)
+        if top_k > 0:
+            sorted_skills = sorted_skills[:top_k]
+
+        return json.dumps({
+            "month_filter": month or "(all time)",
+            "total_skills": len(all_names),
+            "used_skills": len(used_names),
+            "unused_skills": len(unused),
+            "unused_list": unused,
+            "usage": {name: data for name, data in sorted_skills},
         }, indent=2, ensure_ascii=False)
 
     @mcp.tool()
