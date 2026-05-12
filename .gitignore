@@ -17,3 +17,4 @@ skills_local/
 .mcp.json
 config/registries.yaml
 .DS_Store
+.clawhub/

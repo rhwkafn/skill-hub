@@ -20,12 +20,13 @@ import argparse
 import datetime
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 from ..indexer import SkillIndex
-from ..models import SkillMode
+from ..models import SkillMeta, SkillMode
 from ..registry import SkillRegistry
 from ..router import KeywordRouter, TFIDFRouter
 from ..router.base import SkillRouter
@@ -69,6 +70,21 @@ def _record_usage(usage: dict, name: str) -> None:
     entry["total"] += 1
     entry["last_used"] = ts
     entry["months"][month_key] = entry["months"].get(month_key, 0) + 1
+
+
+def _run_clawhub(args: list[str], workdir: Path) -> tuple[int, str, str]:
+    """Run a clawhub CLI command and return (returncode, stdout, stderr)."""
+    cmd = ["npx", "clawhub", *args, "--workdir", str(workdir), "--no-input"]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60,
+            shell=True,  # needed for npx on Windows
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "clawhub command timed out (60s)"
+    except FileNotFoundError:
+        return -1, "", "npx/clawhub not found. Install with: npm install -g clawhub"
 
 
 def _create_selector(args) -> SkillSelector | None:
@@ -127,7 +143,9 @@ def create_server(
             "Use search_skills for keyword lookup. "
             "Use load_skill to get full instructions for a chosen skill. "
             "Use plan_with_skills for complex tasks. "
-            "Use get_skill_usage to see usage statistics and find unused skills."
+            "Use get_skill_usage to see usage statistics and find unused skills. "
+            "Use search_remote_skills ONLY when local skills don't match AND user confirms. "
+            "Use install_remote_skill ONLY after user approves a remote search result."
         ),
     )
 
@@ -383,6 +401,128 @@ def create_server(
             })
 
         return json.dumps(results, indent=2, ensure_ascii=False)
+
+    @mcp.tool()
+    def search_remote_skills(query: str, top_k: int = 10) -> str:
+        """Search ClawHub for skills not in the local registry.
+
+        GATING RULES — only call this tool when:
+        1. Local suggest_skills returned no good matches (score < 0.15) AND the task
+           is specialized/complex enough to warrant external skills, AND the user confirms.
+        2. OR the user explicitly asks to search remote/external skills.
+
+        Do NOT call this tool on every task. Most tasks should use local skills only.
+
+        Args:
+            query: Search query (e.g. "causal inference DID", "R stats econometrics")
+            top_k: Max results to return (default 10)
+
+        Returns:
+            Formatted list of matching skills with slug, name, and relevance score.
+        """
+        rc, stdout, stderr = _run_clawhub(
+            ["search", query, "--limit", str(top_k)], root
+        )
+        if rc != 0:
+            return f"ClawHub search failed: {stderr or stdout}"
+
+        # Parse output: "slug  Name  (score)"
+        lines = [l.strip() for l in stdout.strip().split("\n") if l.strip()]
+        results = []
+        for line in lines:
+            if line.startswith("-") or not line:
+                continue
+            # Format: slug  Name  (score)
+            parts = line.rsplit("(", 1)
+            if len(parts) == 2:
+                name_part = parts[0].strip()
+                score_part = parts[1].rstrip(")")
+                slug = name_part.split()[0] if name_part.split() else name_part
+                results.append({"slug": slug, "display": name_part, "score": score_part})
+
+        if not results:
+            return f"No remote skills found for: {query}"
+
+        out = [f"Found {len(results)} remote skills on ClawHub:\n"]
+        for i, r in enumerate(results, 1):
+            out.append(f"  {i}. {r['display']} [score: {r['score']}]")
+        out.append("\nTo install, call install_remote_skill(slug=<slug>).")
+        out.append("Only install skills you actually need.")
+        return "\n".join(out)
+
+    @mcp.tool()
+    def install_remote_skill(slug: str) -> str:
+        """Install a skill from ClawHub into the local registry.
+
+        GATING RULES — only call this tool when:
+        1. The user has reviewed search_remote_skills results AND explicitly approved installation.
+        2. OR the user directly specifies a slug to install.
+
+        After installation, the skill is added to the local index and becomes
+        available via search_skills/suggest_skills/load_skill like any other skill.
+
+        Args:
+            slug: The skill slug from ClawHub (e.g. "causal-inference", "python-data-analysis")
+
+        Returns:
+            Installation result with skill metadata.
+        """
+        clawhub_dir = root / "skills_local" / "clawhub"
+
+        rc, stdout, stderr = _run_clawhub(
+            ["install", slug, "--dir", "skills_local/clawhub", "--force"], root
+        )
+        if rc != 0:
+            return f"Failed to install '{slug}': {stderr or stdout}"
+
+        # Parse the installed SKILL.md
+        skill_dir = clawhub_dir / slug
+        skill_md = skill_dir / "SKILL.md"
+        if not skill_md.exists():
+            return f"Installed but SKILL.md not found at {skill_md}"
+
+        content = skill_md.read_text(encoding="utf-8")
+
+        # Parse frontmatter
+        from ..sync.local_source import _parse_skill_frontmatter
+        from ..sync.github_source import _auto_extract_tags, _infer_phase, _infer_execution_mode
+
+        description, use_when, tags, category = _parse_skill_frontmatter(content)
+        if not tags:
+            tags = _auto_extract_tags(content, description)
+
+        # Check if already in index
+        if slug in index.skills:
+            existing = index.skills[slug]
+            existing.local_path = str(skill_dir)
+            existing.description = description or existing.description
+        else:
+            skill = SkillMeta(
+                name=slug,
+                registry="clawhub",
+                description=description,
+                category=category,
+                tags=tags,
+                use_when=use_when,
+                source_url=f"https://clawhub.com/skills/{slug}",
+                local_path=str(skill_dir),
+                phase=_infer_phase(content, description),
+                execution_mode=_infer_execution_mode(content, description),
+            )
+            skill.build_decision_card(content)
+            index.add(skill)
+            all_skills.append(skill)
+
+        # Persist index
+        index.save(index_path)
+
+        return (
+            f"Installed '{slug}' from ClawHub.\n"
+            f"  Path: {skill_dir}\n"
+            f"  Description: {description[:120]}\n"
+            f"  Tags: {', '.join(tags[:6])}\n"
+            f"  Available via load_skill('{slug}')"
+        )
 
     return mcp
 
