@@ -10,16 +10,22 @@ index_path = root / "skill_index.json"
 usage_path = root / "skill_usage.json"
 
 # Load data
-skills = json.load(open(index_path, encoding="utf-8")) if index_path.exists() else []
-usage = json.load(open(usage_path, encoding="utf-8")) if usage_path.exists() else {}
+if index_path.exists():
+    with open(index_path, encoding="utf-8") as f:
+        skills = json.load(f)
+else:
+    skills = []
+
+if usage_path.exists():
+    with open(usage_path, encoding="utf-8") as f:
+        usage = json.load(f)
+else:
+    usage = {}
 
 total_skills = len(skills)
 used_skills = len(usage)
 unused_skills = total_skills - used_skills
 total_calls = sum(u.get("total", 0) for u in usage.values())
-
-# Build skill lookup
-skill_map = {s["name"]: s for s in skills}
 
 # Monthly stats (last 6 months)
 now = datetime.now()
@@ -61,6 +67,12 @@ unused_domains = Counter(s["domain"] for s in unused_list)
 unused_phases = Counter(s["phase"] for s in unused_list)
 
 updated = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def escape_js_json(obj):
+    """JSON.dumps with </script> escaping to prevent HTML injection."""
+    s = json.dumps(obj, ensure_ascii=False)
+    return s.replace("</script>", "<\\/script>").replace("<!--", "<\\!--")
 
 # ─── HTML ───
 html = f"""<!DOCTYPE html>
@@ -252,8 +264,8 @@ document.querySelectorAll('.stat-num[data-target]').forEach(el => {{
 }});
 
 // Monthly trend chart
-const monthlyData = {json.dumps(list(monthly_counts.values()))};
-const monthlyLabels = {json.dumps(list(monthly_counts.keys()))};
+const monthlyData = {escape_js_json(list(monthly_counts.values()))};
+const monthlyLabels = {escape_js_json(list(monthly_counts.keys()))};
 new Chart(document.getElementById('chartMonthly'), {{
   type: 'line',
   data: {{
@@ -284,7 +296,7 @@ new Chart(document.getElementById('chartMonthly'), {{
 }});
 
 // Domain distribution chart
-const domainData = {json.dumps(dict(unused_domains))};
+const domainData = {escape_js_json(dict(unused_domains))};
 const domainLabels = Object.keys(domainData);
 const domainValues = Object.values(domainData);
 const domainColors = ['#ff6b9d','#7c6cf0','#00d4cf','#f0c040','#40e0a0','#a29bfe','#fab1a0','#81ecec'];
@@ -303,7 +315,7 @@ new Chart(document.getElementById('chartDomain'), {{
 }});
 
 // Top used skills bars
-const topUsed = {json.dumps([{"name": n, "count": d.get("total", 0)} for n, d in top_used])};
+const topUsed = {escape_js_json([{"name": n, "count": d.get("total", 0)} for n, d in top_used])};
 const maxCount = Math.max(...topUsed.map(s => s.count), 1);
 const barsContainer = document.getElementById('usageBars');
 topUsed.forEach((s, i) => {{
@@ -319,7 +331,7 @@ topUsed.forEach((s, i) => {{
 }});
 
 // Unused skills cards
-const unusedSkills = {json.dumps(unused_list[:60])};
+const unusedSkills = {escape_js_json(unused_list[:60])};
 const domainMap = {{"biology":"生物学","science":"科学","engineering":"工程","data-science":"数据科学","writing":"写作","marketing":"营销","chemistry":"化学","none":"通用"}};
 const phaseMap = {{"define":"定义","plan":"规划","build":"构建","verify":"验证","review":"审查","ship":"交付","execute":"执行"}};
 const unusedGrid = document.getElementById('unusedGrid');
@@ -339,7 +351,7 @@ unusedSkills.forEach(s => {{
 }});
 
 // Rarely used skills
-const rarelyUsed = {json.dumps([{"name": n, "count": d.get("total", 0), "last": d.get("last_used", "")} for n, d in rarely_used[:30]])};
+const rarelyUsed = {escape_js_json([{"name": n, "count": d.get("total", 0), "last": d.get("last_used", "")} for n, d in rarely_used[:30]])};
 const rarelyGrid = document.getElementById('rarelyGrid');
 rarelyUsed.forEach(s => {{
   const info = unusedSkills.find(u => u.name === s.name) || {{}};

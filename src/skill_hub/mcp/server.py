@@ -17,9 +17,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
-import time
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -59,16 +59,16 @@ def _save_usage(path: Path, data: dict) -> None:
 
 def _record_usage(usage: dict, name: str) -> None:
     """Record a skill usage event with timestamp."""
-    import datetime
     now = datetime.datetime.now()
     ts = now.isoformat(timespec="seconds")
     month_key = now.strftime("%Y-%m")
 
     if name not in usage:
         usage[name] = {"total": 0, "months": {}, "last_used": None}
-    usage[name]["total"] = usage[name].get("total", 0) + 1
-    usage[name]["last_used"] = ts
-    usage[name]["months"][month_key] = usage[name].get("months", {}).get(month_key, 0) + 1
+    entry = usage[name]
+    entry["total"] += 1
+    entry["last_used"] = ts
+    entry["months"][month_key] = entry["months"].get(month_key, 0) + 1
 
 
 def _create_selector(args) -> SkillSelector | None:
@@ -111,6 +111,7 @@ def create_server(
 
     usage_path = root / "skill_usage.json"
     usage_data = _load_usage(usage_path)
+    usage_dirty = [False]  # mutable flag for closure
 
     if router is None:
         router = TFIDFRouter()  # default: local semantic matching, no API needed
@@ -164,9 +165,9 @@ def create_server(
                         "\n".join(f"  - {c.name}" for c in candidates[:5]))
             return f"Skill '{name}' not found. Use search_skills to discover skills."
 
-        # Record usage
+        # Record usage (buffer writes, flush on get_skill_usage or shutdown)
         _record_usage(usage_data, name)
-        _save_usage(usage_path, usage_data)
+        usage_dirty[0] = True
 
         if skill.local_path:
             skill_md = Path(skill.local_path) / "SKILL.md"
@@ -289,7 +290,10 @@ def create_server(
         Returns:
             JSON with per-skill usage counts, monthly breakdown, and unused skills list.
         """
-        import datetime
+        # Flush buffered usage data
+        if usage_dirty[0]:
+            _save_usage(usage_path, usage_data)
+            usage_dirty[0] = False
 
         # Build usage report
         all_names = {s.name for s in all_skills}
