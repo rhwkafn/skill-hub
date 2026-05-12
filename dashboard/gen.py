@@ -41,66 +41,104 @@ js_data = json.dumps(skills, ensure_ascii=False)
 # ─── CSS (shared) ───
 CSS = """
   :root {
-    --bg: #0a0a0f; --card: #12121a; --card-hover: #1a1a28; --border: #1e1e30;
-    --text: #e0e0e8; --text-dim: #8888a0; --accent: #6c5ce7; --accent2: #00cec9;
-    --accent3: #fd79a8; --accent4: #fdcb6e; --accent5: #55efc4;
-    --global: #ff6b6b; --compose: #ffd93d; --on_demand: #6c5ce7;
+    --bg: #06060b; --card: #0e0e18; --card-hover: #161625; --border: #1a1a2e;
+    --text: #e8e8f0; --text-dim: #7878a0; --accent: #7c6cf0; --accent2: #00d4cf;
+    --accent3: #ff6b9d; --accent4: #f0c040; --accent5: #40e0a0;
+    --global: #ff5c5c; --compose: #ffc93c; --on_demand: #7c6cf0;
+    --glow: rgba(124,108,240,0.15);
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: -apple-system,'SF Pro Display','PingFang SC','Microsoft YaHei','Segoe UI',sans-serif; background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; }
-  .hero { padding:80px 40px 40px; text-align:center; background:linear-gradient(135deg,#0a0a1a 0%,#1a0a2e 50%,#0a1a2e 100%); position:relative; overflow:hidden; }
-  .hero::before { content:''; position:absolute; top:-50%; left:-50%; width:200%; height:200%; background:radial-gradient(circle at 30% 50%,rgba(108,92,231,0.08) 0%,transparent 50%),radial-gradient(circle at 70% 50%,rgba(0,206,201,0.06) 0%,transparent 50%); animation:drift 20s ease-in-out infinite; }
-  @keyframes drift { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-20px,10px)} }
-  .hero h1 { font-size:3rem; font-weight:700; background:linear-gradient(135deg,#6c5ce7,#00cec9); -webkit-background-clip:text; -webkit-text-fill-color:transparent; position:relative; margin-bottom:8px; }
-  .hero p { color:var(--text-dim); font-size:1.1rem; position:relative; }
-  .hero .updated { color:var(--text-dim); font-size:0.75rem; margin-top:8px; position:relative; opacity:0.6; }
-  .stats { display:flex; justify-content:center; gap:40px; padding:30px 40px; }
-  .stat { text-align:center; }
-  .stat-num { font-size:2.2rem; font-weight:700; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-  .stat-label { font-size:0.8rem; color:var(--text-dim); letter-spacing:1px; }
-  .container { max-width:1400px; margin:0 auto; padding:0 40px 60px; }
-  .section { margin-bottom:50px; }
-  .section-title { font-size:1.4rem; font-weight:600; margin-bottom:20px; padding-left:12px; border-left:3px solid var(--accent); display:flex; align-items:center; gap:12px; }
-  .charts-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:40px; }
-  .chart-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; }
-  .chart-card h3 { font-size:0.9rem; color:var(--text-dim); margin-bottom:16px; }
+  body { font-family:'Inter','SF Pro Display','PingFang SC','Microsoft YaHei','Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; }
+
+  /* ── Hero ── */
+  .hero { padding:100px 40px 50px; text-align:center; position:relative; overflow:hidden; background:linear-gradient(180deg,#0c0c1a 0%,#0a0a14 100%); }
+  .hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(124,108,240,0.12) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 20% 80%,rgba(0,212,207,0.06) 0%,transparent 50%),radial-gradient(ellipse 60% 40% at 80% 80%,rgba(255,107,157,0.05) 0%,transparent 50%); pointer-events:none; }
+  .hero::after { content:''; position:absolute; inset:0; background:url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cpattern id='g' width='60' height='60' patternUnits='userSpaceOnUse'%3E%3Cpath d='M60 0H0v60' fill='none' stroke='%23ffffff' stroke-width='0.3' opacity='0.03'/%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23g)' width='60' height='60'/%3E%3C/svg%3E"); pointer-events:none; opacity:0.5; }
+  .hero-content { position:relative; z-index:1; }
+  .hero h1 { font-size:3.2rem; font-weight:800; letter-spacing:-0.02em; background:linear-gradient(135deg,#a78bfa 0%,#7c6cf0 30%,#00d4cf 70%,#40e0a0 100%); background-size:200% 200%; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:gradient-shift 8s ease infinite; margin-bottom:12px; }
+  @keyframes gradient-shift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+  .hero p { color:var(--text-dim); font-size:1.15rem; max-width:600px; margin:0 auto; }
+  .hero .updated { color:var(--text-dim); font-size:0.75rem; margin-top:10px; opacity:0.5; }
+  .hero-links { display:flex; gap:12px; justify-content:center; margin-top:24px; position:relative; z-index:1; }
+  .hero-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 24px; border-radius:10px; font-size:0.9rem; font-weight:600; text-decoration:none; transition:all 0.25s; cursor:pointer; border:none; }
+  .hero-btn-primary { background:linear-gradient(135deg,#7c6cf0,#6c5ce7); color:#fff; box-shadow:0 4px 20px rgba(124,108,240,0.3); }
+  .hero-btn-primary:hover { transform:translateY(-2px); box-shadow:0 6px 28px rgba(124,108,240,0.45); }
+  .hero-btn-ghost { background:rgba(255,255,255,0.05); color:var(--text-dim); border:1px solid var(--border); backdrop-filter:blur(8px); }
+  .hero-btn-ghost:hover { background:rgba(255,255,255,0.1); color:var(--text); border-color:var(--accent); }
+  .hero-btn svg { width:18px; height:18px; fill:currentColor; }
+
+  /* ── Stats ── */
+  .stats { display:flex; justify-content:center; gap:48px; padding:36px 40px; position:relative; }
+  .stats::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:80%; height:1px; background:linear-gradient(90deg,transparent,var(--border),transparent); }
+  .stat { text-align:center; position:relative; }
+  .stat-num { font-size:2.4rem; font-weight:800; background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; line-height:1.1; }
+  .stat-label { font-size:0.75rem; color:var(--text-dim); letter-spacing:1.5px; text-transform:uppercase; margin-top:4px; }
+
+  /* ── Container & Sections ── */
+  .container { max-width:1440px; margin:0 auto; padding:0 48px 80px; }
+  .section { margin-bottom:56px; }
+  .section-title { font-size:1.3rem; font-weight:700; margin-bottom:20px; padding-left:14px; border-left:3px solid var(--accent); display:flex; align-items:center; gap:12px; letter-spacing:-0.01em; }
+
+  /* ── Charts ── */
+  .charts-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:24px; }
+  .chart-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; position:relative; overflow:hidden; transition:border-color 0.3s; }
+  .chart-card:hover { border-color:rgba(124,108,240,0.3); }
+  .chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(124,108,240,0.2),transparent); }
+  .chart-card h3 { font-size:0.85rem; color:var(--text-dim); margin-bottom:16px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
   .chart-container { position:relative; height:220px; }
-  .filter-bar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px; }
-  .filter-btn { padding:6px 16px; border:1px solid var(--border); border-radius:20px; background:transparent; color:var(--text-dim); font-size:0.85rem; cursor:pointer; transition:all 0.2s; }
-  .filter-btn:hover,.filter-btn.active { border-color:var(--accent); color:var(--accent); background:rgba(108,92,231,0.1); }
-  .filter-btn.active { background:rgba(108,92,231,0.2); }
+
+  /* ── Filters ── */
+  .filter-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; }
+  .filter-btn { padding:6px 14px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text-dim); font-size:0.8rem; cursor:pointer; transition:all 0.2s; font-weight:500; }
+  .filter-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--glow); }
+  .filter-btn.active { border-color:var(--accent); color:var(--accent); background:rgba(124,108,240,0.15); box-shadow:0 0 12px rgba(124,108,240,0.1); }
+
+  /* ── Search ── */
   .search-row { display:flex; gap:12px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
-  .search-box { flex:1; min-width:200px; max-width:400px; padding:10px 16px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:0.95rem; outline:none; transition:border-color 0.2s; }
-  .search-box:focus { border-color:var(--accent); }
-  .search-box::placeholder { color:var(--text-dim); }
-  .sort-select { padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:0.85rem; outline:none; cursor:pointer; }
-  .skill-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
-  .skill-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; transition:all 0.2s; cursor:default; }
-  .skill-card:hover { background:var(--card-hover); border-color:var(--accent); transform:translateY(-2px); }
+  .search-box { flex:1; min-width:200px; max-width:420px; padding:10px 16px 10px 40px; border:1px solid var(--border); border-radius:10px; background:var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237878a0' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 14px center no-repeat; color:var(--text); font-size:0.9rem; outline:none; transition:all 0.2s; }
+  .search-box:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(124,108,240,0.1); }
+  .search-box::placeholder { color:var(--text-dim); opacity:0.6; }
+  .sort-select { padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:var(--card); color:var(--text-dim); font-size:0.8rem; outline:none; cursor:pointer; transition:border-color 0.2s; }
+  .sort-select:focus { border-color:var(--accent); }
+
+  /* ── Skill Grid ── */
+  .skill-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:14px; }
+  .skill-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; transition:all 0.25s; cursor:default; position:relative; }
+  .skill-card:hover { background:var(--card-hover); border-color:rgba(124,108,240,0.4); transform:translateY(-3px); box-shadow:0 8px 32px rgba(0,0,0,0.3),0 0 0 1px rgba(124,108,240,0.1); }
   .skill-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .skill-name { font-weight:600; font-size:0.95rem; }
-  .skill-mode { font-size:0.7rem; padding:2px 8px; border-radius:10px; font-weight:500; }
-  .mode-global { background:rgba(255,107,107,0.15); color:var(--global); }
-  .mode-compose { background:rgba(255,217,61,0.15); color:var(--compose); }
-  .mode-on_demand { background:rgba(108,92,231,0.12); color:var(--on_demand); }
-  .skill-source { font-size:0.75rem; color:var(--text-dim); margin-bottom:6px; }
-  .skill-desc { font-size:0.82rem; color:var(--text-dim); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-  .skill-tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .skill-tag { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:rgba(0,206,201,0.1); color:var(--accent2); }
-  .skill-domain { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:rgba(253,203,110,0.1); color:var(--accent4); }
-  .skill-phase { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:rgba(108,92,231,0.1); color:var(--accent); }
-  .skill-exec { font-size:0.7rem; padding:2px 8px; border-radius:6px; }
-  .exec-serial { background:rgba(0,206,201,0.1); color:var(--accent2); }
-  .exec-parallel { background:rgba(85,239,196,0.1); color:var(--accent5); }
-  .exec-independent { background:rgba(136,136,160,0.1); color:var(--text-dim); }
+  .skill-name { font-weight:700; font-size:0.95rem; letter-spacing:-0.01em; }
+  .skill-mode { font-size:0.65rem; padding:2px 8px; border-radius:6px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
+  .mode-global { background:rgba(255,92,92,0.12); color:var(--global); }
+  .mode-compose { background:rgba(255,201,60,0.12); color:var(--compose); }
+  .mode-on_demand { background:rgba(124,108,240,0.1); color:var(--on_demand); }
+  .skill-source { font-size:0.72rem; color:var(--text-dim); margin-bottom:6px; opacity:0.7; }
+  .skill-desc { font-size:0.82rem; color:var(--text-dim); line-height:1.55; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .skill-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:10px; }
+  .skill-tag { font-size:0.68rem; padding:2px 8px; border-radius:6px; background:rgba(0,212,207,0.08); color:var(--accent2); font-weight:500; }
+  .skill-domain { font-size:0.68rem; padding:2px 8px; border-radius:6px; background:rgba(240,192,64,0.08); color:var(--accent4); font-weight:500; }
+  .skill-phase { font-size:0.68rem; padding:2px 8px; border-radius:6px; background:rgba(124,108,240,0.08); color:var(--accent); font-weight:500; }
+  .skill-exec { font-size:0.68rem; padding:2px 8px; border-radius:6px; font-weight:500; }
+  .exec-serial { background:rgba(0,212,207,0.08); color:var(--accent2); }
+  .exec-parallel { background:rgba(64,224,160,0.08); color:var(--accent5); }
+  .exec-independent { background:rgba(120,120,160,0.08); color:var(--text-dim); }
   .count-badge { font-size:0.75rem; color:var(--text-dim); margin-left:auto; font-weight:400; }
-  .footer { text-align:center; padding:40px; color:var(--text-dim); font-size:0.8rem; border-top:1px solid var(--border); margin-top:40px; }
-  .footer a { color:var(--accent); text-decoration:none; }
-  @media (max-width:900px) {
-    .charts-row { grid-template-columns:1fr; } .hero h1 { font-size:2rem; }
-    .stats { gap:20px; flex-wrap:wrap; } .stat-num { font-size:1.6rem; }
-    .skill-grid { grid-template-columns:1fr; } .container { padding:0 20px 40px; }
+
+  /* ── Footer ── */
+  .footer { text-align:center; padding:48px 40px; color:var(--text-dim); font-size:0.8rem; border-top:1px solid var(--border); margin-top:40px; }
+  .footer a { color:var(--accent); text-decoration:none; transition:color 0.2s; }
+  .footer a:hover { color:var(--accent2); }
+
+  /* ── Responsive ── */
+  @media (max-width:960px) {
+    .charts-row { grid-template-columns:1fr 1fr; }
+    .hero h1 { font-size:2.2rem; } .hero { padding:60px 24px 36px; }
+    .stats { gap:24px; flex-wrap:wrap; } .stat-num { font-size:1.8rem; }
+    .skill-grid { grid-template-columns:1fr; } .container { padding:0 24px 50px; }
     .search-row { flex-direction:column; } .search-box { max-width:100%; }
+  }
+  @media (max-width:600px) {
+    .charts-row { grid-template-columns:1fr; }
+    .hero h1 { font-size:1.8rem; } .hero-links { flex-direction:column; align-items:center; }
   }
 """
 
@@ -255,9 +293,21 @@ en_html = f"""<!DOCTYPE html>
 <body>
 
 <div class="hero">
-  <h1>Skill Hub</h1>
-  <p>{total} skills across {num_sources} sources — index first, load on demand</p>
-  <div class="updated">Last updated: {updated}</div>
+  <div class="hero-content">
+    <h1>Skill Hub</h1>
+    <p>{total} skills across {num_sources} sources — index first, load on demand</p>
+    <div class="updated">Last updated: {updated}</div>
+    <div class="hero-links">
+      <a class="hero-btn hero-btn-primary" href="https://github.com/rhwkafn/skill-hub" target="_blank">
+        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="hero-btn hero-btn-ghost" href="https://github.com/rhwkafn/skill-hub/releases" target="_blank">
+        <svg viewBox="0 0 16 16"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 010 2.474l-5.026 5.026a1.75 1.75 0 01-2.474 0l-6.25-6.25A1.752 1.752 0 011 7.775zM6 5a1 1 0 100 2 1 1 0 000-2z"/></svg>
+        Releases
+      </a>
+    </div>
+  </div>
 </div>
 
 <div class="stats">
@@ -294,7 +344,7 @@ en_html = f"""<!DOCTYPE html>
 </div>
 
 <div class="footer">
-  <a href="https://github.com/Jinze-Lee/codex-skills-workbench">skill-hub</a> &mdash; Skills-as-RAG agent skill registry
+  <a href="https://github.com/rhwkafn/skill-hub">skill-hub</a> &mdash; Skills-as-RAG agent skill registry
 </div>
 
 <script>
@@ -330,9 +380,21 @@ zh_html = f"""<!DOCTYPE html>
 <body>
 
 <div class="hero">
-  <h1>Skill Hub</h1>
-  <p>{total} 个技能，覆盖 {num_sources} 个来源 — 先索引，按需加载</p>
-  <div class="updated">最后更新：{updated}</div>
+  <div class="hero-content">
+    <h1>Skill Hub</h1>
+    <p>{total} 个技能，覆盖 {num_sources} 个来源 — 先索引，按需加载</p>
+    <div class="updated">最后更新：{updated}</div>
+    <div class="hero-links">
+      <a class="hero-btn hero-btn-primary" href="https://github.com/rhwkafn/skill-hub" target="_blank">
+        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="hero-btn hero-btn-ghost" href="https://github.com/rhwkafn/skill-hub/releases" target="_blank">
+        <svg viewBox="0 0 16 16"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 010 2.474l-5.026 5.026a1.75 1.75 0 01-2.474 0l-6.25-6.25A1.752 1.752 0 011 7.775zM6 5a1 1 0 100 2 1 1 0 000-2z"/></svg>
+        Releases
+      </a>
+    </div>
+  </div>
 </div>
 
 <div class="stats">
@@ -369,7 +431,7 @@ zh_html = f"""<!DOCTYPE html>
 </div>
 
 <div class="footer">
-  <a href="https://github.com/Jinze-Lee/codex-skills-workbench">skill-hub</a> &mdash; Skills-as-RAG 智能体技能注册中心
+  <a href="https://github.com/rhwkafn/skill-hub">skill-hub</a> &mdash; Skills-as-RAG 智能体技能注册中心
 </div>
 
 <script>
