@@ -32,7 +32,7 @@ _INTENT_DOMAIN = {
     "debug": "engineering", "deploy": "engineering", "unit": "engineering",
     "code": "engineering", "refactor": "engineering", "api": "engineering",
     "microservice": "engineering", "pull": "engineering", "pr": "engineering",
-    "write": "writing", "blog": "writing", "article": "writing", "copy": "writing",
+    "blog": "writing", "article": "writing", "copy": "writing", "essay": "writing", "draft": "writing",
     "marketing": "marketing", "seo": "marketing", "campaign": "marketing",
     "research": "science", "paper": "science", "experiment": "science",
 }
