@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Hub — 使用率分析</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #06060b; --card: #0e0e18; --card-hover: #161625; --border: #1a1a2e;
+    --text: #e8e8f0; --text-dim: #7878a0; --accent: #7c6cf0; --accent2: #00d4cf;
+    --accent3: #ff6b9d; --accent4: #f0c040; --accent5: #40e0a0;
+    --glow: rgba(124,108,240,0.15); --danger: #ff5c5c;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter','SF Pro Display','PingFang SC','Microsoft YaHei',system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; overflow-x:hidden; }
+
+  /* ── Hero ── */
+  .hero { padding:80px 40px 40px; text-align:center; position:relative; overflow:hidden; background:linear-gradient(180deg,#0c0c1a 0%,#0a0a14 100%); }
+  .hero::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(255,92,92,0.1) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 80%,rgba(124,108,240,0.08) 0%,transparent 50%); pointer-events:none; }
+  .hero h1 { font-size:2.8rem; font-weight:800; letter-spacing:-0.02em; background:linear-gradient(135deg,#ff6b9d 0%,#7c6cf0 50%,#00d4cf 100%); background-size:200% 200%; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:grad 6s ease infinite; margin-bottom:8px; }
+  @keyframes grad { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+  .hero p { color:var(--text-dim); font-size:1.1rem; }
+  .hero .updated { color:var(--text-dim); font-size:0.75rem; margin-top:8px; opacity:0.5; }
+  .hero-links { display:flex; gap:12px; justify-content:center; margin-top:20px; }
+  .hero-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 24px; border-radius:10px; font-size:0.9rem; font-weight:600; text-decoration:none; transition:all 0.25s; cursor:pointer; border:none; }
+  .hero-btn-primary { background:linear-gradient(135deg,#7c6cf0,#6c5ce7); color:#fff; box-shadow:0 4px 20px rgba(124,108,240,0.3); }
+  .hero-btn-primary:hover { transform:translateY(-2px); box-shadow:0 6px 28px rgba(124,108,240,0.45); }
+  .hero-btn-ghost { background:rgba(255,255,255,0.05); color:var(--text-dim); border:1px solid var(--border); }
+  .hero-btn-ghost:hover { background:rgba(255,255,255,0.1); color:var(--text); border-color:var(--accent); }
+  .hero-btn svg { width:18px; height:18px; fill:currentColor; }
+
+  /* ── Stats ── */
+  .stats { display:flex; justify-content:center; gap:48px; padding:36px 40px; position:relative; }
+  .stats::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:80%; height:1px; background:linear-gradient(90deg,transparent,var(--border),transparent); }
+  .stat { text-align:center; }
+  .stat-num { font-size:2.4rem; font-weight:800; line-height:1.1; }
+  .stat-num.accent { background:linear-gradient(135deg,var(--accent),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .stat-num.danger { background:linear-gradient(135deg,var(--danger),var(--accent3)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .stat-num.success { background:linear-gradient(135deg,var(--accent5),var(--accent2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .stat-label { font-size:0.75rem; color:var(--text-dim); letter-spacing:1.5px; text-transform:uppercase; margin-top:4px; }
+
+  /* ── Container ── */
+  .container { max-width:1440px; margin:0 auto; padding:0 48px 80px; }
+  .section { margin-bottom:56px; }
+  .section-title { font-size:1.3rem; font-weight:700; margin-bottom:20px; padding-left:14px; border-left:3px solid var(--accent); display:flex; align-items:center; gap:12px; }
+
+  /* ── Charts ── */
+  .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+  .chart-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; position:relative; overflow:hidden; }
+  .chart-card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(124,108,240,0.2),transparent); }
+  .chart-card h3 { font-size:0.85rem; color:var(--text-dim); margin-bottom:16px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
+  .chart-container { position:relative; height:260px; }
+
+  /* ── Usage Bar Chart (animated) ── */
+  .usage-bars { display:flex; flex-direction:column; gap:8px; }
+  .usage-bar-row { display:flex; align-items:center; gap:12px; }
+  .usage-bar-name { width:160px; font-size:0.82rem; color:var(--text); text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .usage-bar-track { flex:1; height:24px; background:var(--card); border-radius:6px; overflow:hidden; position:relative; }
+  .usage-bar-fill { height:100%; border-radius:6px; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width 1.5s cubic-bezier(0.22,1,0.36,1); width:0; position:relative; }
+  .usage-bar-fill::after { content:attr(data-count); position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:0.72rem; font-weight:700; color:#fff; }
+  .usage-bar-fill.zero { background:linear-gradient(90deg,rgba(255,92,92,0.3),rgba(255,107,157,0.3)); }
+  .usage-bar-fill.zero::after { content:'0'; color:var(--danger); }
+
+  /* ── Unused Skill Cards ── */
+  .unused-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+  .unused-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; position:relative; overflow:hidden; transition:all 0.3s; }
+  .unused-card::before { content:''; position:absolute; inset:-1px; border-radius:12px; background:linear-gradient(135deg,rgba(255,92,92,0.2),rgba(124,108,240,0.1)); opacity:0; transition:opacity 0.3s; z-index:0; pointer-events:none; }
+  .unused-card:hover { transform:translateY(-3px); border-color:rgba(255,92,92,0.4); box-shadow:0 8px 32px rgba(255,92,92,0.1),0 0 0 1px rgba(255,92,92,0.1); }
+  .unused-card:hover::before { opacity:1; }
+  .unused-card > * { position:relative; z-index:1; }
+  .unused-name { font-weight:700; font-size:0.95rem; margin-bottom:4px; }
+  .unused-source { font-size:0.72rem; color:var(--text-dim); opacity:0.7; margin-bottom:6px; }
+  .unused-desc { font-size:0.82rem; color:var(--text-dim); line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .unused-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:10px; }
+  .unused-tag { font-size:0.68rem; padding:2px 8px; border-radius:6px; font-weight:500; }
+  .tag-domain { background:rgba(240,192,64,0.08); color:var(--accent4); }
+  .tag-phase { background:rgba(124,108,240,0.08); color:var(--accent); }
+  .unused-prompt { margin-top:10px; padding:8px 12px; background:rgba(124,108,240,0.06); border-radius:8px; font-size:0.78rem; color:var(--text-dim); border-left:2px solid var(--accent); }
+  .unused-prompt strong { color:var(--accent); }
+
+  /* ── Pulse animation for unused cards ── */
+  @keyframes pulse-glow { 0%,100%{box-shadow:0 0 0 0 rgba(255,92,92,0)} 50%{box-shadow:0 0 20px 2px rgba(255,92,92,0.08)} }
+  .unused-card { animation:pulse-glow 4s ease-in-out infinite; }
+  .unused-card:nth-child(2n) { animation-delay:1s; }
+  .unused-card:nth-child(3n) { animation-delay:2s; }
+
+  /* ── Monthly trend ── */
+  .trend-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; }
+  .trend-card h3 { font-size:0.85rem; color:var(--text-dim); margin-bottom:16px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
+
+  /* ── Footer ── */
+  .footer { text-align:center; padding:48px 40px; color:var(--text-dim); font-size:0.8rem; border-top:1px solid var(--border); margin-top:40px; }
+  .footer a { color:var(--accent); text-decoration:none; }
+  .footer a:hover { color:var(--accent2); }
+
+  /* ── Responsive ── */
+  @media (max-width:960px) {
+    .charts-row { grid-template-columns:1fr; }
+    .hero h1 { font-size:2rem; } .hero { padding:60px 24px 36px; }
+    .stats { gap:24px; flex-wrap:wrap; } .stat-num { font-size:1.8rem; }
+    .container { padding:0 24px 50px; }
+    .unused-grid { grid-template-columns:1fr; }
+    .usage-bar-name { width:100px; font-size:0.75rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Skill Usage Analytics</h1>
+  <p>309 个技能中 309 个从未被调用 — 发现被忽略的能力</p>
+  <div class="updated">最后更新：2026-05-12 18:01</div>
+  <div class="hero-links">
+    <a class="hero-btn hero-btn-primary" href="index_zh.html">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 4.42 3.58 8 8 8s8-3.58 8-8c0-4.42-3.58-8-8-8zm5.9 7H9.64c-.1 2.67-.95 5.07-2.25 6.72A6.03 6.03 0 0013.9 8zM8 14c-1.13-1.56-1.96-3.84-2.07-6.5h4.13c-.1 2.66-.94 4.94-2.06 6.5zM5.93 6H1.1a6.03 6.03 0 014.58-5.72C4.36 1.93 3.5 4.33 3.4 7l2.53.01zM1.1 10h4.83c.1 2.67.95 5.07 2.25 6.72A6.03 6.03 0 011.1 10zm6.97 6.72C9.37 15.07 10.2 12.79 10.31 10h4.59a6.03 6.03 0 01-6.83 6.72z"/></svg>
+      查看主面板
+    </a>
+    <a class="hero-btn hero-btn-ghost" href="https://github.com/rhwkafn/skill-hub" target="_blank">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num accent" data-target="309">0</div><div class="stat-label">总技能数</div></div>
+  <div class="stat"><div class="stat-num success" data-target="0">0</div><div class="stat-label">已使用</div></div>
+  <div class="stat"><div class="stat-num danger" data-target="309">0</div><div class="stat-label">未使用</div></div>
+  <div class="stat"><div class="stat-num accent" data-target="0">0</div><div class="stat-label">总调用次数</div></div>
+</div>
+
+<div class="container">
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>月度调用趋势</h3>
+      <div class="chart-container"><canvas id="chartMonthly"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>未使用技能 — 领域分布</h3>
+      <div class="chart-container"><canvas id="chartDomain"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Top Used Skills -->
+  <div class="section">
+    <div class="section-title">最常使用的技能 Top 20</div>
+    <div class="usage-bars" id="usageBars"></div>
+  </div>
+
+  <!-- Unused Skills -->
+  <div class="section">
+    <div class="section-title">
+      从未使用的技能
+      <span style="font-size:0.8rem;color:var(--danger);font-weight:400;">(309 个)</span>
+    </div>
+    <div class="unused-grid" id="unusedGrid"></div>
+  </div>
+
+  <!-- Rarely Used -->
+  <div class="section">
+    <div class="section-title">低频使用的技能 (≤2 次)</div>
+    <div class="unused-grid" id="rarelyGrid"></div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <a href="https://github.com/rhwkafn/skill-hub">skill-hub</a> &mdash; Skill Usage Analytics Dashboard
+</div>
+
+<script>
+// Animated counters
+document.querySelectorAll('.stat-num[data-target]').forEach(el => {
+  const target = parseInt(el.dataset.target);
+  const duration = 1500;
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(ease * target);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+});
+
+// Monthly trend chart
+const monthlyData = [0, 0, 0, 0, 0, 0];
+const monthlyLabels = ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"];
+new Chart(document.getElementById('chartMonthly'), {
+  type: 'line',
+  data: {
+    labels: monthlyLabels,
+    datasets: [{
+      data: monthlyData,
+      borderColor: '#7c6cf0',
+      backgroundColor: 'rgba(124,108,240,0.1)',
+      fill: true,
+      tension: 0.4,
+      pointBackgroundColor: '#7c6cf0',
+      pointBorderColor: '#0e0e18',
+      pointBorderWidth: 2,
+      pointRadius: 5,
+      pointHoverRadius: 8,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#7878a0' } },
+      y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#7878a0' }, beginAtZero: true },
+    },
+    animation: { duration: 2000, easing: 'easeOutQuart' },
+  }
+});
+
+// Domain distribution chart
+const domainData = {"biology": 27, "chemistry": 5, "data-science": 15, "engineering": 67, "marketing": 26, "none": 90, "science": 72, "writing": 7};
+const domainLabels = Object.keys(domainData);
+const domainValues = Object.values(domainData);
+const domainColors = ['#ff6b9d','#7c6cf0','#00d4cf','#f0c040','#40e0a0','#a29bfe','#fab1a0','#81ecec'];
+new Chart(document.getElementById('chartDomain'), {
+  type: 'doughnut',
+  data: {
+    labels: domainLabels,
+    datasets: [{ data: domainValues, backgroundColor: domainColors.slice(0,domainLabels.length), borderWidth:0, hoverBorderWidth:2, hoverBorderColor:'#fff' }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position:'right', labels: { color:'#7878a0', font:{size:11}, padding:8, boxWidth:12 } } },
+    animation: { duration: 1500, easing: 'easeOutQuart' },
+  }
+});
+
+// Top used skills bars
+const topUsed = [];
+const maxCount = Math.max(...topUsed.map(s => s.count), 1);
+const barsContainer = document.getElementById('usageBars');
+topUsed.forEach((s, i) => {
+  const row = document.createElement('div');
+  row.className = 'usage-bar-row';
+  const pct = (s.count / maxCount * 100).toFixed(1);
+  row.innerHTML = `<div class="usage-bar-name">${s.name}</div><div class="usage-bar-track"><div class="usage-bar-fill" data-count="${s.count}" style="width:0%"></div></div>`;
+  barsContainer.appendChild(row);
+  // Animate after a delay
+  setTimeout(() => {
+    row.querySelector('.usage-bar-fill').style.width = pct + '%';
+  }, 100 + i * 80);
+});
+
+// Unused skills cards
+const unusedSkills = [{"name": "adaptyv", "registry": "K-Dense-AI/scientific-agent-skills", "description": "How to use the Adaptyv Bio Foundry API and Python SDK for protein experiment design, submission, and results retrieval. Use this skill whenever the us", "domain": "biology", "phase": "execute", "triggers": [], "use_when": ""}, {"name": "anndata", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Data structure for annotated matrices in single-cell analysis. Use when working with .h5ad files or integrating with the scverse ecosystem. This is th", "domain": "biology", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "arboreto", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Infer gene regulatory networks (GRNs) from gene expression data using scalable algorithms (GRNBoost2, GENIE3). Use when analyzing transcriptomics data", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "benchling-integration", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Benchling R&D platform integration. Access registry (DNA, proteins), inventory, ELN entries, workflows via API, build Benchling Apps, query Data Wareh", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "biopython", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Comprehensive molecular biology toolkit. Use for sequence manipulation, file parsing (FASTA/GenBank/PDB), phylogenetics, and programmatic NCBI/PubMed ", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "bioservices", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Unified Python interface to 40+ bioinformatics services. Use when querying multiple databases (UniProt, KEGG, ChEMBL, Reactome) in a single workflow w", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "cellxgene-census", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Query the CELLxGENE Census (61M+ cells) programmatically. Use when you need expression data across tissues, diseases, or cell types from the largest c", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "deepchem", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Molecular ML with diverse featurizers and pre-built datasets. Use for property prediction (ADMET, toxicity) with traditional ML or GNNs when you want ", "domain": "biology", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "diffdock", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Diffusion-based molecular docking. Predict protein-ligand binding poses from PDB/SMILES, confidence scores, virtual screening, for structure-based dru", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "exploratory-data-analysis", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Perform comprehensive exploratory data analysis on scientific data files across 200+ file formats. This skill should be used when analyzing any scient", "domain": "biology", "phase": "define", "triggers": [], "use_when": ""}, {"name": "geniml", "registry": "K-Dense-AI/scientific-agent-skills", "description": "This skill should be used when working with genomic interval data (BED files) for machine learning tasks. Use for training region embeddings (Region2V", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "gget", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Fast CLI/Python queries to 20+ bioinformatics databases. Use for quick lookups: gene info, BLAST searches, AlphaFold structures, enrichment analysis. ", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "ginkgo-cloud-lab", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Submit and manage protocols on Ginkgo Bioworks Cloud Lab (cloud.ginkgo.bio), a web-based interface for autonomous lab execution on Reconfigurable Auto", "domain": "biology", "phase": "execute", "triggers": [], "use_when": ""}, {"name": "glycoengineering", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Analyze and engineer protein glycosylation. Scan sequences for N-glycosylation sequons (N-X-S/T), predict O-glycosylation hotspots, and access curated", "domain": "biology", "phase": "execute", "triggers": [], "use_when": ""}, {"name": "gtars", "registry": "K-Dense-AI/scientific-agent-skills", "description": "High-performance toolkit for genomic interval analysis in Rust with Python bindings. Use when working with genomic regions, BED files, coverage tracks", "domain": "biology", "phase": "build", "triggers": [], "use_when": "**"}, {"name": "latchbio-integration", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Latch platform for bioinformatics workflows. Build pipelines with Latch SDK, @workflow/@task decorators, deploy serverless workflows, LatchFile/LatchD", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "pathml", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Full-featured computational pathology toolkit. Use for advanced WSI analysis including multiplexed immunofluorescence (CODEX, Vectra), nucleus segment", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "phylogenetics", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Build and analyze phylogenetic trees using MAFFT (multiple alignment), IQ-TREE 2 (maximum likelihood), and FastTree (fast NJ/ML). Visualize with ETE3 ", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "polars-bio", "registry": "K-Dense-AI/scientific-agent-skills", "description": "High-performance genomic interval operations and bioinformatics file I/O on Polars DataFrames. Overlap, nearest, merge, coverage, complement, subtract", "domain": "biology", "phase": "plan", "triggers": [], "use_when": ""}, {"name": "primekg", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Query the Precision Medicine Knowledge Graph (PrimeKG) for multiscale biological data including genes, drugs, diseases, phenotypes, and more.", "domain": "biology", "phase": "review", "triggers": [], "use_when": ""}, {"name": "pydeseq2", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Differential gene expression analysis (Python DESeq2). Identify DE genes from bulk RNA-seq counts, Wald tests, FDR correction, volcano/MA plots, for R", "domain": "biology", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "pymatgen", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Materials science toolkit. Crystal structures (CIF, POSCAR), phase diagrams, band structure, DOS, Materials Project integration, format conversion, fo", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "pysam", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Genomic file toolkit. Read/write SAM/BAM/CRAM alignments, VCF/BCF variants, FASTA/FASTQ sequences, extract regions, calculate coverage, for NGS data p", "domain": "biology", "phase": "review", "triggers": [], "use_when": ""}, {"name": "pytdc", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Therapeutics Data Commons. AI-ready drug discovery datasets (ADME, toxicity, DTI), benchmarks, scaffold splits, molecular oracles, for therapeutic ML ", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "rowan", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Rowan is a cloud-native molecular modeling and medicinal-chemistry workflow platform with a Python API. Use for pKa and macropKa prediction, conformer", "domain": "biology", "phase": "build", "triggers": [], "use_when": ""}, {"name": "scanpy", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Standard single-cell RNA-seq analysis pipeline. Use for QC, normalization, dimensionality reduction (PCA/UMAP/t-SNE), clustering, differential express", "domain": "biology", "phase": "review", "triggers": [], "use_when": ""}, {"name": "scvi-tools", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Deep generative models for single-cell omics. Use when you need probabilistic batch correction (scVI), transfer learning, differential expression with", "domain": "biology", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "datamol", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Pythonic wrapper around RDKit with simplified interface and sensible defaults. Preferred for standard drug discovery including SMILES parsing, standar", "domain": "chemistry", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "matchms", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Spectral similarity and compound identification for metabolomics. Use for comparing mass spectra, computing similarity scores (cosine, modified cosine", "domain": "chemistry", "phase": "build", "triggers": [], "use_when": ""}, {"name": "medchem", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Medicinal chemistry filters. Apply drug-likeness rules (Lipinski, Veber), PAINS filters, structural alerts, complexity metrics, for compound prioritiz", "domain": "chemistry", "phase": "review", "triggers": [], "use_when": ""}, {"name": "molfeat", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Molecular featurization for ML (100+ featurizers). ECFP, MACCS, descriptors, pretrained models (ChemBERTa), convert SMILES to features, for QSAR and m", "domain": "chemistry", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "rdkit", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Cheminformatics toolkit for fine-grained molecular control. SMILES/SDF parsing, descriptors (MW, LogP, TPSA), fingerprints, substructure search, 2D/3D", "domain": "chemistry", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "aeon", "registry": "K-Dense-AI/scientific-agent-skills", "description": "This skill should be used for time series machine learning tasks including classification, regression, clustering, forecasting, anomaly detection, seg", "domain": "data-science", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "dask", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Distributed computing for larger-than-RAM pandas/NumPy workflows. Use when you need to scale existing pandas/NumPy code beyond memory or across cluste", "domain": "data-science", "phase": "build", "triggers": [], "use_when": ""}, {"name": "flowio", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Parse FCS (Flow Cytometry Standard) files v2.0-3.1. Extract events as NumPy arrays, read metadata/channels, convert to CSV/DataFrame, for flow cytomet", "domain": "data-science", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "get-available-resources", "registry": "K-Dense-AI/scientific-agent-skills", "description": "This skill should be used at the start of any computationally intensive scientific task to detect and report available system resources (CPU cores, GP", "domain": "data-science", "phase": "plan", "triggers": [], "use_when": ""}, {"name": "histolab", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Lightweight WSI tile extraction and preprocessing. Use for basic slide processing tissue detection, tile extraction, stain normalization for H&E image", "domain": "data-science", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "optimize-for-gpu", "registry": "K-Dense-AI/scientific-agent-skills", "description": "GPU-accelerate Python code using CuPy, Numba CUDA, Warp, cuDF, cuML, cuGraph, KvikIO, cuCIM, cuxfilter, cuVS, cuSpatial, and RAFT. Use whenever the us", "domain": "data-science", "phase": "build", "triggers": [], "use_when": ""}, {"name": "pennylane", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Hardware-agnostic quantum ML framework with automatic differentiation. Use when training quantum circuits via gradients, building hybrid quantum-class", "domain": "data-science", "phase": "build", "triggers": [], "use_when": ""}, {"name": "pyopenms", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Complete mass spectrometry analysis platform. Use for proteomics workflows feature detection, peptide identification, protein quantification, and comp", "domain": "data-science", "phase": "define", "triggers": [], "use_when": ""}, {"name": "scikit-learn", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Machine learning in Python with scikit-learn. Use when working with supervised learning (classification, regression), unsupervised learning (clusterin", "domain": "data-science", "phase": "build", "triggers": [], "use_when": "**"}, {"name": "scikit-survival", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Comprehensive toolkit for survival analysis and time-to-event modeling in Python using scikit-survival. Use this skill when working with censored surv", "domain": "data-science", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "tiledbvcf", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Efficient storage and retrieval of genomic variant data using TileDB. Scalable VCF/BCF ingestion, incremental sample addition, compressed storage, par", "domain": "data-science", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "torch-geometric", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Guide for building Graph Neural Networks with PyTorch Geometric (PyG). Use this skill whenever the user asks about graph neural networks, GNNs, node c", "domain": "data-science", "phase": "build", "triggers": [], "use_when": ""}, {"name": "umap-learn", "registry": "K-Dense-AI/scientific-agent-skills", "description": "UMAP dimensionality reduction. Fast nonlinear manifold learning for 2D/3D visualization, clustering preprocessing (HDBSCAN), supervised/parametric UMA", "domain": "data-science", "phase": "define", "triggers": [], "use_when": "** When you have labeled data and want to separate known classes while keeping meaningful point embeddings."}, {"name": "usfiscaldata", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Query the U.S. Treasury Fiscal Data API for federal financial data including national debt, government spending, revenue, interest rates, exchange rat", "domain": "data-science", "phase": "execute", "triggers": [], "use_when": ""}, {"name": "vaex", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Use this skill for processing and analyzing large tabular datasets (billions of rows) that exceed available RAM. Vaex excels at out-of-core DataFrame ", "domain": "data-science", "phase": "build", "triggers": [], "use_when": ""}, {"name": "browser-testing-with-devtools", "registry": "addyosmani/agent-skills", "description": "Tests in real browsers. Use when building or debugging anything that runs in a browser. Use when you need to inspect the DOM, capture console errors, ", "domain": "engineering", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "ci-cd-and-automation", "registry": "addyosmani/agent-skills", "description": "Automates CI/CD pipeline setup. Use when setting up or modifying build and deployment pipelines. Use when you need to automate quality gates, configur", "domain": "engineering", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "code-review-and-quality", "registry": "addyosmani/agent-skills", "description": "Conducts multi-axis code review. Use before merging any change. Use when reviewing code written by yourself, another agent, or a human. Use when you n", "domain": "engineering", "phase": "review", "triggers": [], "use_when": ""}, {"name": "code-simplification", "registry": "addyosmani/agent-skills", "description": "Simplifies code for clarity. Use when refactoring code for clarity without changing behavior. Use when code works but is harder to read, maintain, or ", "domain": "engineering", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "deprecation-and-migration", "registry": "addyosmani/agent-skills", "description": "Manages deprecation and migration. Use when removing old systems, APIs, or features. Use when migrating users from one implementation to another. Use ", "domain": "engineering", "phase": "plan", "triggers": [], "use_when": ""}, {"name": "doubt-driven-development", "registry": "addyosmani/agent-skills", "description": "Subjects every non-trivial decision to a fresh-context adversarial review before it stands. Use when correctness matters more than speed, when working", "domain": "engineering", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "incremental-implementation", "registry": "addyosmani/agent-skills", "description": "Delivers changes incrementally. Use when implementing any feature or change that touches more than one file. Use when you're about to write a large am", "domain": "engineering", "phase": "build", "triggers": [], "use_when": ""}, {"name": "shipping-and-launch", "registry": "addyosmani/agent-skills", "description": "Prepares production launches. Use when preparing to deploy to production. Use when you need a pre-launch checklist, when setting up monitoring, when p", "domain": "engineering", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "test-driven-development", "registry": "addyosmani/agent-skills", "description": "Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, ", "domain": "engineering", "phase": "verify", "triggers": [], "use_when": ""}, {"name": "using-agent-skills", "registry": "addyosmani/agent-skills", "description": "Discovers and invokes agent skills. Use when starting a session or when you need to discover which skill applies to the current task. This is the meta", "domain": "engineering", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "dnanexus-integration", "registry": "K-Dense-AI/scientific-agent-skills", "description": "DNAnexus cloud genomics platform. Build apps/applets, manage data (upload/download), dxpy Python SDK, run workflows, FASTQ/BAM/VCF, for genomics pipel", "domain": "engineering", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "modal", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Cloud computing platform for running Python on GPUs and serverless infrastructure. Use when deploying AI/ML models, running GPU-accelerated workloads,", "domain": "engineering", "phase": "ship", "triggers": [], "use_when": ""}, {"name": "neuropixels-analysis", "registry": "K-Dense-AI/scientific-agent-skills", "description": "Neuropixels neural recording analysis. Load SpikeGLX/OpenEphys data, preprocess, motion correction, Kilosort4 spike sorting, quality metrics, Allen/IB", "domain": "engineering", "phase": "review", "triggers": [], "use_when": ""}];
+const domainMap = {"biology":"生物学","science":"科学","engineering":"工程","data-science":"数据科学","writing":"写作","marketing":"营销","chemistry":"化学","none":"通用"};
+const phaseMap = {"define":"定义","plan":"规划","build":"构建","verify":"验证","review":"审查","ship":"交付","execute":"执行"};
+const unusedGrid = document.getElementById('unusedGrid');
+unusedSkills.forEach(s => {
+  const src = s.registry.split('/').pop();
+  const dLabel = domainMap[s.domain] || s.domain;
+  const pLabel = phaseMap[s.phase] || s.phase;
+  // Generate suggested prompt
+  let prompt = s.use_when || s.triggers[0] || '';
+  if (!prompt) {
+    prompt = `尝试用 "${s.name}" 来处理 ${dLabel !== '通用' ? dLabel : ''}相关的任务`;
+  }
+  const card = document.createElement('div');
+  card.className = 'unused-card';
+  card.innerHTML = `<div class="unused-name">${s.name}</div><div class="unused-source">${src}</div><div class="unused-desc">${s.description}</div><div class="unused-tags"><span class="unused-tag tag-domain">${dLabel}</span><span class="unused-tag tag-phase">${pLabel}</span></div><div class="unused-prompt"><strong>试试：</strong>${prompt}</div>`;
+  unusedGrid.appendChild(card);
+});
+
+// Rarely used skills
+const rarelyUsed = [];
+const rarelyGrid = document.getElementById('rarelyGrid');
+rarelyUsed.forEach(s => {
+  const info = unusedSkills.find(u => u.name === s.name) || {};
+  const src = (info.registry || '').split('/').pop();
+  const dLabel = domainMap[info.domain || 'none'] || info.domain || '通用';
+  const card = document.createElement('div');
+  card.className = 'unused-card';
+  card.innerHTML = `<div class="unused-name">${s.name} <span style="font-size:0.7rem;color:var(--accent4);">(${s.count}次)</span></div><div class="unused-source">${src}</div><div class="unused-desc">${info.description || ''}</div><div class="unused-tags"><span class="unused-tag tag-domain">${dLabel}</span></div>`;
+  rarelyGrid.appendChild(card);
+});
+</script>
+</body>
+</html>
