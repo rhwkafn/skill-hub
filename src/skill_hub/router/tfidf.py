@@ -37,6 +37,13 @@ _ZH_EN_MAP = {
     "测试": "test", "单测": "unit test", "集成测试": "integration test",
     "API": "api", "数据库": "database", "服务器": "server",
     "容器": "docker", "持续集成": "ci/cd", "流水线": "pipeline",
+    "Word": "word docx document", "word": "word docx document",
+    "Excel": "excel xlsx spreadsheet", "excel": "excel xlsx spreadsheet",
+    "表格": "excel xlsx spreadsheet", "电子表格": "excel xlsx spreadsheet",
+    "PPT": "pptx powerpoint presentation slide", "ppt": "pptx powerpoint presentation slide",
+    "幻灯片": "pptx powerpoint presentation slide", "演示文稿": "pptx powerpoint presentation slide",
+    "PDF": "pdf document", "pdf": "pdf document",
+    "文档": "docx word document", "报告": "report document pdf",
 }
 
 
@@ -142,6 +149,13 @@ _INTENT_BIGRAM_OVERRIDES = {
     ("social", "media"): {"domain": "marketing"},
     ("paper", "abstract"): {"domain": "writing"},        # paper abstract = writing task
     ("paper", "draft"): {"domain": "writing"},           # paper draft = writing task
+    ("word", "document"): {"domain": "engineering"},     # Word document = docx
+    ("word", "file"): {"domain": "engineering"},
+    ("excel", "spreadsheet"): {"domain": "data-science"},
+    ("excel", "file"): {"domain": "data-science"},
+    ("spreadsheet", "with"): {"domain": "data-science"},  # "spreadsheet with data" → xlsx
+    ("powerpoint", "presentation"): {"domain": "design"},
+    ("powerpoint", "file"): {"domain": "design"},
 }
 
 
@@ -152,6 +166,16 @@ def _clean_decision_card(text: str) -> str:
     text = re.sub(r"\b(mode|phase|hooks|needs|true|false|on_demand|global|compose)=\S+", "", text)
     text = re.sub(r"\b(define|plan|build|verify|review|ship|execute)\b", "", text)
     return text.strip()
+
+
+# Skill name → synonym text added to corpus for better TF-IDF matching
+_SKILL_SYNONYMS = {
+    "xlsx": "excel spreadsheet xls table data",
+    "docx": "word document doc ms office",
+    "pptx": "powerpoint presentation slides ppt deck",
+    "pdf": "pdf document portable",
+    "markitdown": "convert office document word excel powerpoint pdf markdown",
+}
 
 
 class TFIDFRouter(SkillRouter):
@@ -170,8 +194,10 @@ class TFIDFRouter(SkillRouter):
         self._skills = skills
         self._corpus = []
         for s in skills:
+            synonyms = _SKILL_SYNONYMS.get(s.name, "")
             text = " ".join([
                 s.name.replace("-", " "),
+                synonyms,
                 s.description,
                 s.use_when,
                 " ".join(s.tags),
