@@ -37,12 +37,12 @@ _ZH_EN_MAP = {
     "测试": "test", "单测": "unit test", "集成测试": "integration test",
     "API": "api", "数据库": "database", "服务器": "server",
     "容器": "docker", "持续集成": "ci/cd", "流水线": "pipeline",
-    "Word": "word docx document", "word": "word docx document",
-    "Excel": "excel xlsx spreadsheet", "excel": "excel xlsx spreadsheet",
+    "word": "word docx document",
+    "excel": "excel xlsx spreadsheet",
     "表格": "excel xlsx spreadsheet", "电子表格": "excel xlsx spreadsheet",
-    "PPT": "pptx powerpoint presentation slide", "ppt": "pptx powerpoint presentation slide",
+    "ppt": "pptx powerpoint presentation slide",
     "幻灯片": "pptx powerpoint presentation slide", "演示文稿": "pptx powerpoint presentation slide",
-    "PDF": "pdf document", "pdf": "pdf document",
+    "pdf": "pdf document",
     "文档": "docx word document", "报告": "report document pdf",
 }
 
@@ -63,9 +63,10 @@ def _tokenize(text: str) -> list[str]:
             tokens.append(ch)
             if ch in _ZH_EN_MAP:
                 tokens.append(_ZH_EN_MAP[ch])
-    # Also check multi-character Chinese phrases in the text
+    # Also check multi-character phrases (case-insensitive)
+    text_lower = text.lower()
     for zh, en in _ZH_EN_MAP.items():
-        if len(zh) > 1 and zh in text:
+        if len(zh) > 1 and zh in text_lower:
             tokens.extend(en.split())
     return tokens
 
@@ -153,7 +154,6 @@ _INTENT_BIGRAM_OVERRIDES = {
     ("word", "file"): {"domain": "engineering"},
     ("excel", "spreadsheet"): {"domain": "data-science"},
     ("excel", "file"): {"domain": "data-science"},
-    ("spreadsheet", "with"): {"domain": "data-science"},  # "spreadsheet with data" → xlsx
     ("powerpoint", "presentation"): {"domain": "design"},
     ("powerpoint", "file"): {"domain": "design"},
 }
@@ -170,7 +170,7 @@ def _clean_decision_card(text: str) -> str:
 
 # Skill name → synonym text added to corpus for better TF-IDF matching
 _SKILL_SYNONYMS = {
-    "xlsx": "excel spreadsheet xls table data",
+    "xlsx": "excel spreadsheet xls table",
     "docx": "word document doc ms office",
     "pptx": "powerpoint presentation slides ppt deck",
     "pdf": "pdf document portable",
