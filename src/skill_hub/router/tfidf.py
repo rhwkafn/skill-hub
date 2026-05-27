@@ -11,6 +11,57 @@ from sklearn.metrics.pairwise import cosine_similarity
 from .base import SkillRouter, RouteOutput, RouteResult
 from ..models import SkillMeta, SkillMode
 
+
+# Chinese → English keyword mapping for cross-language matching
+_ZH_EN_MAP = {
+    "测": "test", "试": "test", "单元": "unit", "调试": "debug", "诊断": "diagnose",
+    "修复": "fix", "错误": "error", "异常": "exception",
+    "写": "write", "编写": "write", "创建": "create", "建": "build",
+    "开发": "develop", "生成": "generate", "实现": "implement",
+    "审": "review", "审查": "review", "重构": "refactor",
+    "部署": "deploy", "发布": "release", "上线": "deploy",
+    "规划": "plan", "设计": "design", "架构": "architecture",
+    "分析": "analysis", "数据": "data", "可视化": "visualization",
+    "仪表盘": "dashboard", "图表": "chart", "图": "figure",
+    "博客": "blog", "文章": "article", "论文": "paper", "写作": "writing",
+    "摘要": "abstract", "手稿": "manuscript", "编辑": "editorial",
+    "营销": "marketing", "推广": "marketing", "落地页": "landing",
+    "转化": "conversion", "漏斗": "funnel", "SEO": "seo",
+    "研究": "research", "实验": "experiment", "基因": "gene",
+    "蛋白": "protein", "RNA": "rna", "细胞": "cell", "生物": "biology",
+    "化学": "chemistry", "物理": "physics",
+    "界面": "ui", "原型": "prototype", "线框": "wireframe", "PPT": "pptx",
+    "演示": "presentation", "幻灯片": "slide", "信息图": "infographic",
+    "机器学习": "machine learning", "深度学习": "deep learning",
+    "神经网络": "neural network", "模型": "model",
+    "测试": "test", "单测": "unit test", "集成测试": "integration test",
+    "API": "api", "数据库": "database", "服务器": "server",
+    "容器": "docker", "持续集成": "ci/cd", "流水线": "pipeline",
+}
+
+
+def _tokenize(text: str) -> list[str]:
+    """Tokenizer that handles both English words and Chinese characters.
+
+    English: split on non-alpha, keep 2+ char tokens.
+    Chinese: map to English equivalents + keep individual characters.
+    """
+    tokens = []
+    # Extract English words
+    for word in re.findall(r"[a-z][a-z0-9_]+", text.lower()):
+        tokens.append(word)
+    # Extract Chinese characters and map to English equivalents
+    for ch in text:
+        if "\u4e00" <= ch <= "\u9fff":
+            tokens.append(ch)
+            if ch in _ZH_EN_MAP:
+                tokens.append(_ZH_EN_MAP[ch])
+    # Also check multi-character Chinese phrases in the text
+    for zh, en in _ZH_EN_MAP.items():
+        if len(zh) > 1 and zh in text:
+            tokens.extend(en.split())
+    return tokens
+
 # Query intent → expected phase mapping
 _INTENT_PHASE = {
     "debug": "verify", "test": "verify", "diagnose": "verify", "fix": "verify",
@@ -24,6 +75,22 @@ _INTENT_PHASE = {
     "plan": "plan", "architect": "plan", "design": "plan", "roadmap": "plan",
     "architecture": "plan",
     "spec": "define", "brainstorm": "define", "requirement": "define",
+    # Chinese intent → phase
+    "测": "verify", "调试": "verify", "诊断": "verify", "修复": "verify",
+    "写": "build", "创建": "build", "建": "build", "开发": "build", "生成": "build",
+    "审": "review", "审查": "review", "重构": "review",
+    "部署": "ship", "发布": "ship", "上线": "ship",
+    "规划": "plan", "设计": "plan", "架构": "plan",
+}
+
+# Chinese intent → expected domain mapping
+_INTENT_DOMAIN_ZH = {
+    "测试": "engineering", "调试": "engineering", "部署": "engineering", "运维": "engineering",
+    "博客": "writing", "文章": "writing", "论文": "writing", "写作": "writing", "摘要": "writing", "手稿": "writing",
+    "营销": "marketing", "推广": "marketing", "落地页": "marketing", "转化": "marketing",
+    "研究": "science", "实验": "science", "基因": "science", "蛋白": "science", "RNA": "science",
+    "数据": "data-science", "可视化": "data-science", "仪表盘": "data-science", "分析": "data-science",
+    "设计": "design", "原型": "design", "界面": "design", "UI": "design", "PPT": "design", "演示": "design",
 }
 
 # Query intent → expected domain mapping
@@ -57,7 +124,7 @@ _INTENT_DOMAIN = {
     # Design
     "mockup": "design", "wireframe": "design", "wireframes": "design", "ui": "design", "ux": "design",
     "deck": "design", "slide": "design", "presentation": "design",
-    "figma": "design", "prototype": "design",
+    "figma": "design", "prototype": "design", "infographic": "design", "poster": "design",
 }
 
 # Bigram overrides: when these word pairs appear, override single-word intent
@@ -119,9 +186,11 @@ class TFIDFRouter(SkillRouter):
             self._corpus.append(text.lower())
 
         self._vectorizer = TfidfVectorizer(
-            max_features=5000,
+            tokenizer=_tokenize,
+            max_features=8000,
             ngram_range=(1, 2),
-            stop_words="english",
+            stop_words=None,  # custom tokenizer handles filtering
+            token_pattern=None,  # use custom tokenizer instead
         )
         self._skill_vectors = self._vectorizer.fit_transform(self._corpus)
 
@@ -167,6 +236,11 @@ class TFIDFRouter(SkillRouter):
             if token in _INTENT_DOMAIN:
                 d = _INTENT_DOMAIN[token]
                 domain_votes[d] = domain_votes.get(d, 0) + 1
+
+        # Chinese intent detection — check for Chinese keywords in query
+        for zh_keyword, domain in _INTENT_DOMAIN_ZH.items():
+            if zh_keyword in query_lower:
+                domain_votes[domain] = domain_votes.get(domain, 0) + 1
 
         # Multi-domain queries get boosts for ALL matching domains (no penalty)
         intent_domains = set(domain_votes.keys())
