@@ -432,7 +432,7 @@ def _infer_domain(content: str, description: str, tags: list[str]) -> str:
             best_hits = hits
             best_domain = domain
 
-    return best_domain if best_hits >= 1 else ""
+    return best_domain if best_hits >= 2 else ""
 
 
 def _auto_extract_tags(content: str, description: str) -> list[str]:

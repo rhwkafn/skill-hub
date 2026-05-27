@@ -40,19 +40,19 @@ _INTENT_DOMAIN = {
     "sre": "engineering", "devops": "engineering", "incident": "engineering",
     "outage": "engineering", "troubleshoot": "engineering",
     # Writing — always writing domain
-    "blog": "writing", "article": "writing", "copy": "writing",
-    "essay": "writing", "manuscript": "writing", "abstract": "writing",
+    "blog": "writing", "article": "writing",
+    "essay": "writing", "manuscript": "writing",
     "narrative": "writing", "editorial": "writing",
     # Marketing — always marketing
     "marketing": "marketing", "seo": "marketing", "campaign": "marketing",
-    "conversion": "marketing", "funnel": "marketing", "landing": "marketing",
+    "funnel": "marketing", "landing": "marketing",
     "ab": "marketing",  # A/B test
     # Science — always science
     "research": "science", "paper": "science", "experiment": "science",
     "hypothesis": "science", "genomics": "science", "phylogenetic": "science",
     # Data science
     "visualization": "data-science", "dashboard": "data-science",
-    "etl": "data-science", "analytics": "data-science", "dataset": "data-science",
+    "etl": "data-science", "dataset": "data-science",
     # Design
     "mockup": "design", "wireframe": "design", "ui": "design", "ux": "design",
     "deck": "design", "slide": "design", "presentation": "design",
@@ -68,43 +68,6 @@ _INTENT_BIGRAM_OVERRIDES = {
     ("code", "review"): {"phase": "review", "domain": "engineering"},
     ("unit", "test"): {"phase": "verify", "domain": "engineering"},
     ("integration", "test"): {"phase": "verify", "domain": "engineering"},
-}
-
-# Domain auto-inference keywords (used to infer skill domain from SKILL.md content)
-_DOMAIN_KEYWORDS = {
-    "engineering": [
-        "api", "rest", "graphql", "microservice", "backend", "server", "deploy",
-        "kubernetes", "docker", "ci/cd", "pipeline", "refactor", "debug", "unit test",
-        "integration test", "authentication", "middleware", "database", "sql",
-        "typescript", "javascript", "python", "golang", "rust", "java",
-    ],
-    "science": [
-        "biology", "chemistry", "physics", "genomics", "phylogenetic", "rna",
-        "protein", "molecule", "cell", "sequencing", "crispr", "bioinformatics",
-        "experiment", "hypothesis", "clinical", "medical", "drug", "protein",
-        "microscopy", "pathology", "ecology", "neuroscience",
-    ],
-    "writing": [
-        "blog", "article", "copywriting", "content writing", "manuscript",
-        "academic writing", "creative writing", "newsletter", "editorial",
-        "proofreading", "copy editing",
-    ],
-    "marketing": [
-        "seo", "sem", "conversion", "funnel", "landing page", "email marketing",
-        "social media", "campaign", "ab test", "analytics", "growth",
-        "customer research", "brand", "content marketing", "ppc", "ads",
-    ],
-    "data-science": [
-        "data analysis", "visualization", "dashboard", "pandas", "dataframe",
-        "etl", "data pipeline", "machine learning", "deep learning",
-        "neural network", "model training", "prediction", "classification",
-        "regression", "clustering", "feature engineering",
-    ],
-    "design": [
-        "ui design", "ux design", "mockup", "wireframe", "figma",
-        "prototype", "user interface", "user experience", "layout",
-        "typography", "color scheme", "responsive design",
-    ],
 }
 
 
@@ -174,8 +137,9 @@ class TFIDFRouter(SkillRouter):
         intent_phases = set()
         intent_domains = set()
 
-        # Bigram overrides (higher priority)
+        # Bigram overrides (higher priority — consumed tokens skipped in single-word pass)
         query_tokens = re.findall(r"[a-z]+", query_lower)
+        consumed_positions = set()
         for i in range(len(query_tokens) - 1):
             bigram = (query_tokens[i], query_tokens[i + 1])
             if bigram in _INTENT_BIGRAM_OVERRIDES:
@@ -184,13 +148,17 @@ class TFIDFRouter(SkillRouter):
                     intent_phases.add(ov["phase"])
                 if "domain" in ov:
                     intent_domains.add(ov["domain"])
+                consumed_positions.add(i)
+                consumed_positions.add(i + 1)
 
-        # Single word intent (only if no bigram override matched for that domain)
-        for word in query_words:
-            if word in _INTENT_PHASE:
-                intent_phases.add(_INTENT_PHASE[word])
-            if word in _INTENT_DOMAIN:
-                intent_domains.add(_INTENT_DOMAIN[word])
+        # Single word intent — skip tokens consumed by bigrams
+        for i, token in enumerate(query_tokens):
+            if i in consumed_positions:
+                continue
+            if token in _INTENT_PHASE:
+                intent_phases.add(_INTENT_PHASE[token])
+            if token in _INTENT_DOMAIN:
+                intent_domains.add(_INTENT_DOMAIN[token])
 
         for idx, s in enumerate(self._skills):
             boost = 0.0
