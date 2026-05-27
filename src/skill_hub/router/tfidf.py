@@ -43,6 +43,7 @@ _INTENT_DOMAIN = {
     "blog": "writing", "article": "writing",
     "essay": "writing", "manuscript": "writing",
     "narrative": "writing", "editorial": "writing",
+    "abstract": "writing", "draft": "writing",
     # Marketing — always marketing
     "marketing": "marketing", "seo": "marketing", "campaign": "marketing",
     "funnel": "marketing", "landing": "marketing",
@@ -54,7 +55,7 @@ _INTENT_DOMAIN = {
     "visualization": "data-science", "dashboard": "data-science",
     "etl": "data-science", "dataset": "data-science",
     # Design
-    "mockup": "design", "wireframe": "design", "ui": "design", "ux": "design",
+    "mockup": "design", "wireframe": "design", "wireframes": "design", "ui": "design", "ux": "design",
     "deck": "design", "slide": "design", "presentation": "design",
     "figma": "design", "prototype": "design",
 }
@@ -68,6 +69,12 @@ _INTENT_BIGRAM_OVERRIDES = {
     ("code", "review"): {"phase": "review", "domain": "engineering"},
     ("unit", "test"): {"phase": "verify", "domain": "engineering"},
     ("integration", "test"): {"phase": "verify", "domain": "engineering"},
+    ("protein", "structure"): {"domain": "science"},     # protein structure = science
+    ("landing", "page"): {"domain": "marketing"},        # landing page = marketing
+    ("email", "marketing"): {"domain": "marketing"},
+    ("social", "media"): {"domain": "marketing"},
+    ("paper", "abstract"): {"domain": "writing"},        # paper abstract = writing task
+    ("paper", "draft"): {"domain": "writing"},           # paper draft = writing task
 }
 
 
