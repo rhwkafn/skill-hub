@@ -135,7 +135,7 @@ class TFIDFRouter(SkillRouter):
 
         # Detect intent from query — bigram overrides first, then single words
         intent_phases = set()
-        intent_domains = set()
+        domain_votes: dict[str, int] = {}  # domain → signal count (weighted voting)
 
         # Bigram overrides (higher priority — consumed tokens skipped in single-word pass)
         query_tokens = re.findall(r"[a-z]+", query_lower)
@@ -147,18 +147,23 @@ class TFIDFRouter(SkillRouter):
                 if "phase" in ov:
                     intent_phases.add(ov["phase"])
                 if "domain" in ov:
-                    intent_domains.add(ov["domain"])
+                    domain_votes[ov["domain"]] = domain_votes.get(ov["domain"], 0) + 2
                 consumed_positions.add(i)
                 consumed_positions.add(i + 1)
 
-        # Single word intent — skip tokens consumed by bigrams
+        # Single word intent — skip consumed tokens
         for i, token in enumerate(query_tokens):
             if i in consumed_positions:
                 continue
             if token in _INTENT_PHASE:
                 intent_phases.add(_INTENT_PHASE[token])
             if token in _INTENT_DOMAIN:
-                intent_domains.add(_INTENT_DOMAIN[token])
+                d = _INTENT_DOMAIN[token]
+                domain_votes[d] = domain_votes.get(d, 0) + 1
+
+        # Multi-domain queries get boosts for ALL matching domains (no penalty)
+        intent_domains = set(domain_votes.keys())
+        max_domain_votes = max(domain_votes.values()) if domain_votes else 0
 
         for idx, s in enumerate(self._skills):
             boost = 0.0
@@ -169,18 +174,19 @@ class TFIDFRouter(SkillRouter):
                 if s.phase.value in intent_phases:
                     boost += 0.10 + 0.03 * len(intent_phases)
                 else:
-                    penalty -= 0.05  # penalty for phase mismatch
+                    penalty -= 0.05  # penalty for phase mismatch only
 
-            # Intent-domain alignment
+            # Intent-domain alignment — boost only, no penalty
+            # Proportional to vote count: domain with more signals gets stronger boost
             if intent_domains and s.domain:
-                if s.domain in intent_domains:
-                    boost += 0.10
-                else:
-                    penalty -= 0.07  # strong penalty for domain mismatch
+                if s.domain in domain_votes:
+                    vote_strength = domain_votes[s.domain] / max(max_domain_votes, 1)
+                    boost += 0.08 + 0.07 * vote_strength  # 0.08-0.15 based on signal strength
 
-            # Domain keyword direct match
+            # Domain keyword direct match (domain name in query text)
+            # Stronger when query has fewer domain signals (focused query)
             if s.domain and any(w in query_lower for w in s.domain.replace("-", " ").split()):
-                boost += 0.08
+                boost += 0.08 if len(intent_domains) > 1 else 0.12
 
             # use_when relevance
             if s.use_when and any(w in s.use_when.lower() for w in query_words if len(w) > 3):
