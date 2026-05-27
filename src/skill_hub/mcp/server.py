@@ -326,10 +326,12 @@ def create_server(
         Returns:
             JSON with per-skill usage counts, monthly breakdown, and unused skills list.
         """
-        # Flush buffered usage data
+        # Reload from disk to pick up any external changes or prior-session data
+        nonlocal usage_data
         if usage_dirty[0]:
             _save_usage(usage_path, usage_data)
             usage_dirty[0] = False
+        usage_data = _load_usage(usage_path)
 
         # Build usage report
         all_names = {s.name for s in all_skills}
