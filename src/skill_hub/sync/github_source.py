@@ -374,6 +374,67 @@ def _has_word(text: str, word: str) -> bool:
     return bool(re.search(r'\b' + re.escape(word) + r'\b', text))
 
 
+def _infer_domain(content: str, description: str, tags: list[str]) -> str:
+    """Infer skill domain from SKILL.md content, description, and tags.
+
+    Returns one of: engineering, science, writing, marketing, data-science, design, biology, chemistry.
+    Empty string if no strong signal.
+    """
+    text = (content + " " + description + " " + " ".join(tags)).lower()
+
+    domain_keywords = {
+        "engineering": [
+            "api", "rest", "graphql", "microservice", "backend", "server", "deploy",
+            "kubernetes", "docker", "ci/cd", "pipeline", "refactor", "debug",
+            "unit test", "integration test", "authentication", "middleware",
+            "database", "sql", "typescript", "javascript", "golang", "rust",
+        ],
+        "science": [
+            "biology", "chemistry", "physics", "genomics", "phylogenetic", "rna",
+            "protein", "molecule", "sequencing", "crispr", "bioinformatics",
+            "experiment", "hypothesis", "clinical", "medical", "drug",
+            "microscopy", "pathology", "ecology", "neuroscience",
+        ],
+        "biology": [
+            "single cell", "scrnaseq", "flow cytometry", "histology",
+            "tissue", "organoid", "cell culture", "western blot",
+        ],
+        "writing": [
+            "blog", "article", "copywriting", "content writing", "manuscript",
+            "academic writing", "creative writing", "newsletter", "editorial",
+            "proofreading", "thesis", "dissertation",
+        ],
+        "marketing": [
+            "seo", "sem", "conversion rate", "funnel", "landing page",
+            "email marketing", "social media", "campaign", "a/b test",
+            "growth", "customer research", "brand", "content marketing",
+            "ppc", "ads", "copywriting",
+        ],
+        "data-science": [
+            "data analysis", "visualization", "dashboard", "pandas", "dataframe",
+            "etl", "data pipeline", "machine learning", "deep learning",
+            "neural network", "model training", "prediction", "classification",
+            "regression", "clustering", "feature engineering",
+        ],
+        "design": [
+            "ui design", "ux design", "mockup", "wireframe", "figma",
+            "prototype", "user interface", "user experience", "layout",
+            "typography", "responsive design", "slide", "presentation",
+            "deck", "powerpoint", "pptx",
+        ],
+    }
+
+    best_domain = ""
+    best_hits = 0
+    for domain, keywords in domain_keywords.items():
+        hits = sum(1 for kw in keywords if (_has_word(text, kw) if " " not in kw else kw in text))
+        if hits > best_hits:
+            best_hits = hits
+            best_domain = domain
+
+    return best_domain if best_hits >= 1 else ""
+
+
 def _auto_extract_tags(content: str, description: str) -> list[str]:
     """Extract top keywords from SKILL.md body as auto-tags.
 
@@ -501,13 +562,14 @@ def _extract_capabilities(content: str, description: str) -> tuple[list[str], li
     # false positives like "generate" matching "gene" + "rna"
     domain = ""
     domain_patterns = {
-        "science": ["research", "scientific", "journal", "paper", "publication", "hypothesis", "experiment"],
-        "biology": ["rna", "dna", "protein", "cell", "gene", "genomic", "phylogen", "molecular"],
-        "chemistry": ["molecule", "compound", "chemical", "drug", "smiles", "docking"],
-        "data-science": ["machine learning", "neural", "model training", "dataset", "pandas", "sklearn"],
-        "engineering": ["deploy", "ci/cd", "testing", "refactor", "code review", "api"],
-        "writing": ["writing", "manuscript", "polish", "abstract", "bibliography", "citation"],
-        "marketing": ["marketing", "seo", "ad copy", "landing page", "conversion", "campaign"],
+        "science": ["research", "scientific", "journal", "paper", "publication", "hypothesis", "experiment", "peer review", "arxiv"],
+        "biology": ["rna", "dna", "protein", "cell", "gene", "genomic", "phylogen", "molecular", "sequencing", "crispr", "bioinformatic", "microscop", "patholog", "single cell", "flow cytometry"],
+        "chemistry": ["molecule", "compound", "chemical", "drug", "smiles", "docking", "reaction", "solvent", "catalyst"],
+        "data-science": ["machine learning", "neural", "model training", "dataset", "pandas", "sklearn", "visualization", "dashboard", "data pipeline", "etl", "feature engineering", "classification", "regression", "clustering", "deep learning", "tensorflow", "pytorch"],
+        "engineering": ["deploy", "ci/cd", "testing", "refactor", "code review", "api", "microservice", "backend", "server", "kubernetes", "docker", "database", "authentication", "middleware", "rest api", "graphql", "devops", "sre"],
+        "writing": ["writing", "manuscript", "polish", "abstract", "bibliography", "citation", "thesis", "dissertation", "blog", "article", "editorial", "proofreading", "copywriting", "newsletter"],
+        "marketing": ["marketing", "seo", "ad copy", "landing page", "conversion", "campaign", "funnel", "email marketing", "social media", "growth", "ab test", "customer research", "brand", "ppc", "content marketing"],
+        "design": ["ui design", "ux design", "mockup", "wireframe", "figma", "prototype", "user interface", "user experience", "layout", "typography", "responsive", "slide", "presentation", "deck", "powerpoint", "pptx"],
     }
 
     for dom, patterns in domain_patterns.items():
@@ -515,6 +577,10 @@ def _extract_capabilities(content: str, description: str) -> tuple[list[str], li
         if hits >= 2:
             domain = dom
             break
+
+    # Fallback: if no domain with >=2 hits, try _infer_domain with relaxed threshold
+    if not domain:
+        domain = _infer_domain(content, description, [])
 
     return output_formats, input_types, domain
 

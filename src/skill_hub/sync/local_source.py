@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from .base import SkillSource
-from .github_source import _auto_extract_tags, _infer_execution_mode, _infer_phase
+from .github_source import _auto_extract_tags, _infer_domain, _infer_execution_mode, _infer_phase
 from ..models import SkillMeta
 
 
@@ -47,6 +47,7 @@ class LocalSource(SkillSource):
                 use_when=use_when,
                 source_url=str(skill_file),
                 local_path=str(skill_dir),
+                domain=_infer_domain(content, description, tags),
                 phase=_infer_phase(content, description),
                 execution_mode=_infer_execution_mode(content, description),
             )
