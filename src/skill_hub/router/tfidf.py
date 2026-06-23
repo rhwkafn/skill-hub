@@ -44,6 +44,14 @@ _ZH_EN_MAP = {
     "幻灯片": "pptx powerpoint presentation slide", "演示文稿": "pptx powerpoint presentation slide",
     "pdf": "pdf document",
     "文档": "docx word document", "报告": "report document pdf",
+    # Programming
+    "单元测试": "unit test pytest", "单测": "unit test pytest",
+    "调试": "debug", "重构": "refactor",
+    "装饰器": "decorator", "缓存": "cache",
+    "爬虫": "scraper web scraping", "解析": "parser parse",
+    "算法": "algorithm", "数据结构": "data structure",
+    "接口": "api endpoint", "框架": "framework",
+    "自动化": "automation script",
 }
 
 
@@ -156,6 +164,16 @@ _INTENT_BIGRAM_OVERRIDES = {
     ("excel", "file"): {"domain": "data-science"},
     ("powerpoint", "presentation"): {"domain": "design"},
     ("powerpoint", "file"): {"domain": "design"},
+    # Programming
+    ("unit", "test"): {"phase": "verify", "domain": "engineering"},
+    ("binary", "search"): {"domain": "engineering"},
+    ("rest", "api"): {"domain": "engineering"},
+    ("csv", "parser"): {"domain": "engineering"},
+    ("web", "scraper"): {"domain": "engineering"},
+    ("cli", "tool"): {"domain": "engineering"},
+    ("data", "structure"): {"domain": "engineering"},
+    ("flask", "api"): {"domain": "engineering"},
+    ("fastapi", "api"): {"domain": "engineering"},
 }
 
 
@@ -175,6 +193,20 @@ _SKILL_SYNONYMS = {
     "pptx": "powerpoint presentation slides ppt deck",
     "pdf": "pdf document portable",
     "markitdown": "convert office document word excel powerpoint pdf markdown",
+    # Programming skills
+    "tdd": "test driven development unit test pytest unittest testing",
+    "test-driven-development": "test driven development tdd unit test pytest",
+    "nm-parseltongue-python-testing": "python testing pytest unittest unit test",
+    "python-cookbook": "python recipe pattern decorator algorithm data structure function",
+    "qa-api-tester": "api testing REST flask fastapi endpoint web",
+    "laosi-tdd": "测试驱动开发 tdd 单元测试 pytest",
+    "code-review-and-quality": "code review quality audit lint",
+    "code-simplification": "refactor simplify clean code",
+    "incremental-implementation": "implement feature build code python function",
+    "performance-optimization": "optimize performance speed benchmark",
+    "security-and-hardening": "security vulnerability audit hardening",
+    "weighted-data-pipeline": "data pipeline processing etl csv",
+    "scrape": "web scraping requests html parse links extract",
 }
 
 
