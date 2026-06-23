@@ -44,7 +44,7 @@ def _find_project_root() -> Path:
 
 
 def _load_usage(path: Path) -> dict:
-    """Load skill usage stats from JSON file."""
+    """Load usage stats from JSON file."""
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
@@ -54,35 +54,14 @@ def _load_usage(path: Path) -> dict:
 
 
 def _save_usage(path: Path, data: dict) -> None:
-    """Save skill usage stats to JSON file."""
+    """Save usage stats to JSON file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _record_call(usage: dict, tool: str, skill_name: str = "") -> None:
-    """Record a tool call event. Tracks both tool usage and skill usage."""
-    now = datetime.datetime.now()
-    ts = now.isoformat(timespec="seconds")
-    month_key = now.strftime("%Y-%m")
-
-    # Track tool call
-    tools = usage.setdefault("tools", {})
-    if tool not in tools:
-        tools[tool] = {"total": 0, "months": {}, "last_used": None}
-    t = tools[tool]
-    t["total"] += 1
-    t["last_used"] = ts
-    t["months"][month_key] = t["months"].get(month_key, 0) + 1
-
-    # Track skill usage (if applicable)
-    if skill_name:
-        skills = usage.setdefault("skills", {})
-        if skill_name not in skills:
-            skills[skill_name] = {"total": 0, "months": {}, "last_used": None}
-        s = skills[skill_name]
-        s["total"] += 1
-        s["last_used"] = ts
-        s["months"][month_key] = s["months"].get(month_key, 0) + 1
+def _record_call(usage: dict, name: str) -> None:
+    """Increment call count."""
+    usage[name] = usage.get(name, 0) + 1
 
 
 def _run_clawhub(args: list[str], workdir: Path) -> tuple[int, str, str]:
@@ -150,15 +129,10 @@ def create_server(
     mcp = FastMCP(
         "skill-hub",
         instructions=(
-            f"Agent skill registry with {len(all_skills)} skills across {len(set(s.registry for s in all_skills))} sources. "
-            f"Router: {router.name}. Selector: {selector_status}. "
-            "Use suggest_skills for complex tasks. "
-            "Use search_skills for keyword lookup. "
-            "Use load_skill to get full instructions for a chosen skill. "
-            "Use plan_with_skills for complex tasks. "
-            "Use get_skill_usage to see usage statistics and find unused skills. "
-            "Use search_remote_skills ONLY when local skills don't match AND user confirms. "
-            "Use install_remote_skill ONLY after user approves a remote search result."
+            f"Skill registry: {len(all_skills)} skills, {len(set(s.registry for s in all_skills))} sources.\n"
+            "FIRST STEP for any non-trivial task: call suggest_skills(task_description) to find relevant skills. "
+            "If a skill matches, call load_skill(name) to get instructions, then follow them. "
+            "Only proceed without a skill if suggest_skills returns no good match."
         ),
     )
 
@@ -203,7 +177,7 @@ def create_server(
             return f"Skill '{name}' not found. Use search_skills to discover skills."
 
         # Record usage (buffer writes, flush on get_skill_usage or shutdown)
-        _record_call(usage_data, "load_skill", name)
+        _record_call(usage_data, f"skill:{name}")
         usage_dirty[0] = True
 
         content = None
@@ -332,58 +306,38 @@ def create_server(
         }, indent=2, ensure_ascii=False)
 
     @mcp.tool()
-    def get_skill_usage(month: str = "", top_k: int = 0) -> str:
-        """Get skill usage statistics.
+    def get_skill_usage(top_k: int = 20) -> str:
+        """Get usage statistics — which tools and skills are actually being used.
 
         Args:
-            month: Filter by month (e.g. "2026-05"). Empty = all time totals.
-            top_k: Limit to top N most-used skills. 0 = return all.
+            top_k: Limit to top N entries (default 20, 0 = all).
 
         Returns:
-            JSON with per-skill usage counts, monthly breakdown, and unused skills list.
+            Flat list sorted by call count. Format: {name: count}.
         """
-        # Reload from disk to pick up any external changes or prior-session data
         nonlocal usage_data
         if usage_dirty[0]:
             _save_usage(usage_path, usage_data)
             usage_dirty[0] = False
         usage_data = _load_usage(usage_path)
 
-        # Build tool usage report
-        tools_data = usage_data.get("tools", {})
-        tool_report = {}
-        for tool_name, entry in tools_data.items():
-            total = entry.get("total", 0)
-            months = entry.get("months", {})
-            count = months.get(month, 0) if month else total
-            tool_report[tool_name] = {"count": count, "total": total, "last_used": entry.get("last_used")}
+        # Split into tools vs skills
+        tools = {k: v for k, v in usage_data.items() if not k.startswith("skill:")}
+        skills = {k.removeprefix("skill:"): v for k, v in usage_data.items() if k.startswith("skill:")}
 
-        # Build skill usage report
-        skills_data = usage_data.get("skills", {})
-        all_names = {s.name for s in all_skills}
-        used_names = set(skills_data.keys())
-        unused = sorted(all_names - used_names)
+        all_skill_names = {s.name for s in all_skills}
+        unused = sorted(all_skill_names - set(skills.keys()))
 
-        skill_report = {}
-        for name in all_names:
-            entry = skills_data.get(name, {"total": 0, "months": {}, "last_used": None})
-            total = entry.get("total", 0)
-            months = entry.get("months", {})
-            count = months.get(month, 0) if month else total
-            skill_report[name] = {"count": count, "total": total, "last_used": entry.get("last_used")}
-
-        sorted_skills = sorted(skill_report.items(), key=lambda x: x[1]["count"], reverse=True)
+        sorted_all = sorted(usage_data.items(), key=lambda x: x[1], reverse=True)
         if top_k > 0:
-            sorted_skills = sorted_skills[:top_k]
+            sorted_all = sorted_all[:top_k]
 
         return json.dumps({
-            "month_filter": month or "(all time)",
-            "tools": dict(sorted(tool_report.items(), key=lambda x: x[1]["count"], reverse=True)),
-            "total_skills": len(all_names),
-            "used_skills": len(used_names),
+            "total_skills": len(all_skill_names),
+            "used_skills": len(skills),
             "unused_skills": len(unused),
-            "unused_list": unused,
-            "skills": {name: data for name, data in sorted_skills},
+            "top_used": dict(sorted_all),
+            "unused_sample": unused[:20],
         }, indent=2, ensure_ascii=False)
 
     @mcp.tool()
@@ -552,7 +506,7 @@ def create_server(
 
         # Persist index
         index.save(index_path)
-        _record_call(usage_data, "install_remote_skill", slug)
+        _record_call(usage_data, f"install:{slug}")
         usage_dirty[0] = True
 
         return (
