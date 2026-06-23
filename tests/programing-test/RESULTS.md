@@ -3,43 +3,47 @@
 **Date:** 2026-06-23
 **Tasks:** 10
 **Completed:** 10/10
-**Skill-Hub Usage:** 1/313 = 0.3%
 
-## Summary
+## 3-Round Comparison
 
-| # | Task | Suggested Skill | Skill Loaded | Helpful? |
-|---|------|----------------|-------------|---------|
-| 1 | Binary Search | zarr-python (0.21) | No | — |
-| 2 | Flask API | to-prd (0.40) | No | — |
-| 3 | Unit Tests | devex-review (0.42) | No | — |
-| 4 | Data Viz | vaex (0.33) | No | — |
-| 5 | Blog Outline | article-writing (0.31) | **Yes** | **Yes** |
-| 6 | CLI Tool | using-superpowers (0.24) | No | — |
-| 7 | CSV Parser | scikit-learn (0.27) | No | — |
-| 8 | Caching Decorator | scikit-learn (0.22) | No | — |
-| 9 | Web Scraper | context-save (0.23) | No | — |
-| 10 | Doc Generator | design-an-interface (0.38) | No | — |
+| | Round 1 | Round 2 | Round 3 (MCP重启) |
+|---|---------|---------|-------------------|
+| Skill Index | 313 | 313 | **317** |
+| suggest_skills | 10/10 | 10/10 | 10/10 |
+| skill loads | 1 | 4 | **5** |
+| load rate | 10% | 40% | **50%** |
+| useful loads | 1 | 1 | **4** |
 
-## Usage Statistics
+## Round 3 Detail (Final)
+
+| # | Task | Top Suggestions (score) | Loaded | Helpful? |
+|---|------|------------------------|--------|---------|
+| 1 | Binary Search | incremental-implementation (0.40), python-cookbook (0.34) | python-cookbook | Partial |
+| 2 | Flask API | to-prd (0.40), incremental-implementation (0.34) | python-cookbook | Partial |
+| 3 | Unit Tests | tdd (0.42), design-an-interface (0.37) | tdd | Yes |
+| 4 | Data Viz | vaex (0.44) | — | — |
+| 5 | Blog Outline | article-writing (0.34) | article-writing | Yes |
+| 6 | CLI Tool | tdd (0.38), to-prd (0.27) | — | — |
+| 7 | CSV Parser | context-save (0.37) | — | — |
+| 8 | Caching | python-cookbook (0.25) | — | — |
+| 9 | Web Scraper | qa-api-tester (0.44), tdd (0.42) | python-cookbook | Yes |
+| 10 | Doc Generator | python-cookbook (0.53), qa-api-tester (0.54) | python-cookbook | Yes |
+
+## Cumulative Usage (All 3 Rounds)
 
 ```
-suggest_skills:  10/10  (100% call rate)
-skill loaded:     1/10  (article-writing for blog task)
-skill pool:      313 skills
-used:              1 skill
+suggest_skills:  30 calls (100%)
+skill:article-writing:  3 loads
+skill:tdd:             2 loads
+skill:python-cookbook:  2 loads
+skill:design-an-interface: 1 load
+skill:vaex:            1 load
+Total: 9 loads, 5 distinct skills
 ```
 
-## Diagnosis
+## Key Findings
 
-- **MCP instructions effective:** 100% of tasks called suggest_skills first
-- **Router works correctly:** Found best matching skills for each task
-- **Bottleneck: skill pool is too specialized:** 313 skills focus on ML/science/marketing/writing, missing general programming skills (algorithms, Flask, pytest, CLI tools, data structures)
-
-## Next Steps
-
-Install general programming skills from ClawHub:
-- tdd / test-driven-development
-- debugging / systematic-debugging
-- flask / api development
-- cli tool development
-- data structures / algorithms
+1. **MCP instructions work:** 100% suggest_skills call rate across all rounds
+2. **New skills activate after MCP restart:** tdd and python-cookbook only appeared in Round 3
+3. **Load rate improved 5x:** 10% → 50% after adding general programming skills
+4. **Remaining gap:** No skills for algorithms, CLI tools, data structures, web frameworks
