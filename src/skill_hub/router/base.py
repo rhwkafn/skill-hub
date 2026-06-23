@@ -40,13 +40,17 @@ class RouteOutput:
         return line
 
     def to_prompt(self) -> str:
-        """Generate a structured prompt section for the main model.
+        """Generate a structured prompt section for the main model."""
+        lines = []
 
-        This gives the main model enough context to make informed decisions
-        about which skills to load and how to combine them.
-        """
-        lines = ["## Available Skills (Router Results)\n"]
-        lines.append(f"Found {len(self.candidates)} relevant skills for this task.\n")
+        # Top recommendation — clear action for the main model
+        if self.candidates:
+            top = self.candidates[0]
+            lines.append(f"## Recommended: `{top.skill.name}` (score: {top.score:.2f})")
+            lines.append(f"{top.skill.description[:200]}")
+            lines.append(f"→ Call `load_skill('{top.skill.name}')` to get instructions.\n")
+
+        lines.append(f"## All Candidates ({len(self.candidates)} found)\n")
 
         if self.global_skills:
             lines.append("### Global Skills (activate for entire session)")
